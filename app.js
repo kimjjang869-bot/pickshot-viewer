@@ -107,8 +107,8 @@
         // URL 해시에서 manifest 읽기
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
 
-        // #gz= : gzip 압축 + Base64 (가장 짧음)
-        const gzParam = hashParams.get('gz');
+        // gz= : zlib 압축 + Base64 (쿼리 파라미터 — URL 단축 서비스 호환)
+        const gzParam = params.get('gz') || hashParams.get('gz');
         if (gzParam) {
             try {
                 const binary = atob(gzParam);
