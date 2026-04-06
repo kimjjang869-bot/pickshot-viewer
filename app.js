@@ -317,8 +317,10 @@
         dom.photoIndex.textContent = `${index + 1} / ${state.photos.length}`;
         dom.commentInput.value = photo.comment || '';
 
-        // Update SP button state
+        // Update SP button state + 미리보기 보더
         dom.btnSp.classList.toggle('active', photo.selected);
+        dom.previewImage.style.border = photo.selected ? '4px solid #30D158' : 'none';
+        dom.previewImage.style.borderRadius = photo.selected ? '4px' : '0';
 
         // Reset zoom
         if (state.zoomed) toggleZoom();
@@ -326,8 +328,14 @@
         // Update thumbnail highlights
         updateThumbnailStates();
         scrollThumbnailIntoView(index);
-
         updateCounts();
+
+        // 펜 캔버스 리드로우
+        if (penActive) {
+            setTimeout(resizePenCanvas, 100);
+        } else if (typeof redrawPen === 'function') {
+            setTimeout(redrawPen, 100);
+        }
     }
 
     function navigatePrev() {
@@ -362,6 +370,11 @@
         photo.selected = !photo.selected;
 
         dom.btnSp.classList.toggle('active', photo.selected);
+        // 미리보기 보더 업데이트
+        if (index === state.currentIndex) {
+            dom.previewImage.style.border = photo.selected ? '4px solid #30D158' : 'none';
+            dom.previewImage.style.borderRadius = photo.selected ? '4px' : '0';
+        }
         updateThumbnailStates();
         updateCounts();
         saveState();
@@ -683,8 +696,13 @@
                     navigatePrev();
                     break;
                 case 'ArrowRight':
+                case 'ArrowDown':
                     e.preventDefault();
                     navigateNext();
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    navigatePrev();
                     break;
                 case ' ':
                     e.preventDefault();
@@ -719,6 +737,190 @@
         });
     }
 
+    // ─── Pen Tool ───
+    let penActive = false;
+    let penColor = '#FF3B30';
+    let penDrawing = false;
+    let penPaths = {};  // photoIndex → [[{x,y},...], ...]
+    let currentPenPath = [];
+
+    function togglePen() {
+        penActive = !penActive;
+        const canvas = document.getElementById('pen-canvas');
+        const toolbar = document.getElementById('pen-toolbar');
+        const btn = dom.btnPen || document.getElementById('btn-pen');
+
+        if (penActive) {
+            canvas.classList.remove('hidden');
+            toolbar.classList.remove('hidden');
+            btn.classList.add('pen-active');
+            resizePenCanvas();
+        } else {
+            canvas.classList.add('hidden');
+            toolbar.classList.add('hidden');
+            btn.classList.remove('pen-active');
+        }
+    }
+
+    function resizePenCanvas() {
+        const canvas = document.getElementById('pen-canvas');
+        const container = document.getElementById('preview-container');
+        canvas.width = container.offsetWidth;
+        canvas.height = container.offsetHeight;
+        redrawPen();
+    }
+
+    function redrawPen() {
+        const canvas = document.getElementById('pen-canvas');
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const paths = penPaths[state.currentIndex] || [];
+        for (const path of paths) {
+            if (path.points.length < 2) continue;
+            ctx.beginPath();
+            ctx.strokeStyle = path.color;
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.moveTo(path.points[0].x * canvas.width, path.points[0].y * canvas.height);
+            for (let i = 1; i < path.points.length; i++) {
+                ctx.lineTo(path.points[i].x * canvas.width, path.points[i].y * canvas.height);
+            }
+            ctx.stroke();
+        }
+    }
+
+    function initPenEvents() {
+        const canvas = document.getElementById('pen-canvas');
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (!penActive) return;
+            penDrawing = true;
+            currentPenPath = [];
+            const rect = canvas.getBoundingClientRect();
+            currentPenPath.push({ x: (e.clientX - rect.left) / canvas.width, y: (e.clientY - rect.top) / canvas.height });
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!penDrawing) return;
+            const rect = canvas.getBoundingClientRect();
+            const point = { x: (e.clientX - rect.left) / canvas.width, y: (e.clientY - rect.top) / canvas.height };
+            currentPenPath.push(point);
+
+            // 실시간 그리기
+            const ctx = canvas.getContext('2d');
+            if (currentPenPath.length > 1) {
+                const prev = currentPenPath[currentPenPath.length - 2];
+                ctx.beginPath();
+                ctx.strokeStyle = penColor;
+                ctx.lineWidth = 3;
+                ctx.lineCap = 'round';
+                ctx.moveTo(prev.x * canvas.width, prev.y * canvas.height);
+                ctx.lineTo(point.x * canvas.width, point.y * canvas.height);
+                ctx.stroke();
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            if (!penDrawing) return;
+            penDrawing = false;
+            if (currentPenPath.length > 1) {
+                if (!penPaths[state.currentIndex]) penPaths[state.currentIndex] = [];
+                penPaths[state.currentIndex].push({ color: penColor, points: currentPenPath });
+                // 코멘트에 "[펜 마크 있음]" 자동 추가
+                const photo = state.photos[state.currentIndex];
+                if (photo && !photo.comment.includes('[펜 마크')) {
+                    photo.comment = (photo.comment ? photo.comment + '\n' : '') + '[펜 마크 있음]';
+                    if (dom.commentInput) dom.commentInput.value = photo.comment;
+                }
+                saveState();
+            }
+        });
+
+        // 터치 지원
+        canvas.addEventListener('touchstart', (e) => {
+            if (!penActive) return;
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            penDrawing = true;
+            currentPenPath = [{ x: (touch.clientX - rect.left) / canvas.width, y: (touch.clientY - rect.top) / canvas.height }];
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (!penDrawing) return;
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            const point = { x: (touch.clientX - rect.left) / canvas.width, y: (touch.clientY - rect.top) / canvas.height };
+            currentPenPath.push(point);
+            const ctx = canvas.getContext('2d');
+            if (currentPenPath.length > 1) {
+                const prev = currentPenPath[currentPenPath.length - 2];
+                ctx.beginPath();
+                ctx.strokeStyle = penColor;
+                ctx.lineWidth = 3;
+                ctx.lineCap = 'round';
+                ctx.moveTo(prev.x * canvas.width, prev.y * canvas.height);
+                ctx.lineTo(point.x * canvas.width, point.y * canvas.height);
+                ctx.stroke();
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', () => {
+            if (!penDrawing) return;
+            penDrawing = false;
+            if (currentPenPath.length > 1) {
+                if (!penPaths[state.currentIndex]) penPaths[state.currentIndex] = [];
+                penPaths[state.currentIndex].push({ color: penColor, points: currentPenPath });
+                saveState();
+            }
+        });
+
+        // 색상 선택
+        document.querySelectorAll('.pen-color').forEach(el => {
+            el.addEventListener('click', () => {
+                document.querySelectorAll('.pen-color').forEach(c => c.classList.remove('active'));
+                el.classList.add('active');
+                penColor = el.dataset.color;
+            });
+        });
+
+        // 되돌리기
+        document.getElementById('pen-undo')?.addEventListener('click', () => {
+            const paths = penPaths[state.currentIndex];
+            if (paths && paths.length > 0) {
+                paths.pop();
+                redrawPen();
+                saveState();
+            }
+        });
+
+        // 전체 지우기
+        document.getElementById('pen-clear')?.addEventListener('click', () => {
+            penPaths[state.currentIndex] = [];
+            redrawPen();
+            saveState();
+        });
+
+        // 펜 버튼 이벤트
+        document.getElementById('btn-pen')?.addEventListener('click', togglePen);
+
+        // 리사이즈 시 캔버스 재조정
+        window.addEventListener('resize', () => {
+            if (penActive) resizePenCanvas();
+        });
+    }
+
+    // selectPhoto에서 펜 캔버스 리드로우
+    const origSelectPhoto = selectPhoto;
+    // 이미 selectPhoto가 호출되면 펜 데이터 리드로우
+    const origUpdate = updateThumbnailStates;
+
     // ─── Boot ───
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', () => {
+        init();
+        setTimeout(initPenEvents, 500);
+    });
 })();
