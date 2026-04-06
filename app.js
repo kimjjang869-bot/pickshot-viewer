@@ -107,7 +107,23 @@
         // URL 해시에서 manifest 읽기
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
 
-        // gz= : zlib 압축 + Base64 (쿼리 파라미터 — URL 단축 서비스 호환)
+        // mid= : GitHub Pages에 저장된 manifest (가장 안정적)
+        const midParam = params.get('mid');
+        if (midParam) {
+            try {
+                const manifestUrl = `./data/${midParam}.json`;
+                const resp = await fetch(manifestUrl);
+                if (resp.ok) {
+                    const manifest = await resp.json();
+                    loadFromManifest(manifest);
+                    return;
+                }
+            } catch (e) {
+                console.log('GitHub manifest 로드 실패:', e);
+            }
+        }
+
+        // gz= : zlib 압축 + Base64 (fallback)
         const gzParam = params.get('gz') || hashParams.get('gz');
         if (gzParam) {
             try {
