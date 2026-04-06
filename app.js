@@ -104,18 +104,36 @@
 
         // URL에 manifest 파일 ID가 있으면 직접 다운로드
         const params = new URLSearchParams(window.location.search);
+        // URL 해시(#data=...)에서 Base64 manifest 읽기
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        let dataParam = hashParams.get('data') || params.get('data');
+        if (dataParam) {
+            try {
+                const json = atob(dataParam);
+                const manifest = JSON.parse(json);
+                loadFromManifest(manifest);
+                return;
+            } catch (e) {
+                console.log('data 파라미터 파싱 실패:', e);
+            }
+        }
+
+        // manifest 파일 ID가 있으면 여러 방법 시도
         const manifestId = params.get('manifest');
         if (manifestId) {
-            try {
-                const manifestUrl = `https://drive.google.com/uc?id=${manifestId}&export=download`;
-                const resp = await fetch(manifestUrl);
-                if (resp.ok) {
-                    const manifest = await resp.json();
-                    loadFromManifest(manifest);
-                    return;
-                }
-            } catch (e) {
-                console.log('Manifest 로드 실패, API 방식 시도:', e);
+            const urls = [
+                `https://www.googleapis.com/drive/v3/files/${manifestId}?alt=media`,
+                `https://drive.google.com/uc?id=${manifestId}&export=download`,
+            ];
+            for (const url of urls) {
+                try {
+                    const resp = await fetch(url);
+                    if (resp.ok) {
+                        const manifest = await resp.json();
+                        loadFromManifest(manifest);
+                        return;
+                    }
+                } catch (e) { continue; }
             }
         }
 
