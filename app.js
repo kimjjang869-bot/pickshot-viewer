@@ -695,6 +695,81 @@
         closeSubmitModal();
     }
 
+    async function uploadToDrive() {
+        saveCurrentComment();
+        const selected = state.photos.filter(p => p.selected);
+        if (selected.length === 0) {
+            showToast('선택된 사진이 없습니다');
+            return;
+        }
+
+        const result = {
+            version: '1.0',
+            app: 'PickShot Viewer',
+            exportedAt: new Date().toISOString(),
+            session: { id: state.sessionId, name: state.sessionName, client: state.clientName },
+            totalPhotos: state.photos.length,
+            selectedCount: selected.length,
+            photos: state.photos.map(p => ({
+                filename: p.name,
+                originalFilename: p.originalFilename || p.name,
+                selected: p.selected,
+                comment: p.comment || '',
+                annotations: (typeof penPaths !== 'undefined' ? (penPaths[state.photos.indexOf(p)] || []) : []).map(path => ({
+                    type: 'freehand', color: path.color, points: path.points
+                })),
+            })),
+        };
+
+        const jsonStr = JSON.stringify(result, null, 2);
+        const filename = `${state.clientName || 'client'}_selection.pickshot`;
+
+        // Google Drive 업로드 (multipart)
+        const folderId = state.sessionId;
+        const boundary = 'pickshot_boundary_' + Date.now();
+        const metadata = JSON.stringify({ name: filename, parents: [folderId] });
+
+        let body = '';
+        body += `--${boundary}\r\n`;
+        body += 'Content-Type: application/json; charset=UTF-8\r\n\r\n';
+        body += metadata + '\r\n';
+        body += `--${boundary}\r\n`;
+        body += 'Content-Type: application/json\r\n\r\n';
+        body += jsonStr + '\r\n';
+        body += `--${boundary}--`;
+
+        const btn = document.getElementById('btn-upload-drive');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '⏳ 업로드 중...';
+        btn.disabled = true;
+
+        try {
+            const resp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+                method: 'POST',
+                headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
+                body: body
+            });
+
+            if (resp.ok) {
+                showToast('✅ 셀렉 결과가 Google Drive에 저장되었습니다!');
+                btn.innerHTML = '✅ 전송 완료';
+                setTimeout(closeSubmitModal, 1500);
+            } else {
+                // API 키 없이는 인증 필요 — 다운로드로 폴백
+                showToast('Drive 직접 업로드는 인증이 필요합니다. 파일을 다운로드해주세요.');
+                downloadPickshot();
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        } catch (e) {
+            // 네트워크 오류 — 다운로드로 폴백
+            downloadPickshot();
+            showToast('파일을 다운로드했습니다. Google Drive 폴더에 직접 업로드해주세요.');
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    }
+
     function sharePickshot() {
         // .pickshot 파일 생성 후 Web Share API로 공유 (모바일)
         saveCurrentComment();
@@ -879,7 +954,8 @@
         dom.btnModalClose.addEventListener('click', closeSubmitModal);
         dom.submitModal.querySelector('.modal-backdrop').addEventListener('click', closeSubmitModal);
         dom.btnDownloadJson.addEventListener('click', downloadPickshot);
-        document.getElementById('btn-upload-drive')?.addEventListener('click', sharePickshot);
+        document.getElementById('btn-upload-drive')?.addEventListener('click', uploadToDrive);
+        document.getElementById('btn-share-pickshot')?.addEventListener('click', sharePickshot);
 
         // Comment auto-save
         dom.commentInput.addEventListener('input', () => {
