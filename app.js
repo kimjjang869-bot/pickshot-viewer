@@ -667,10 +667,17 @@
             },
             totalPhotos: state.photos.length,
             selectedCount: selected.length,
-            selections: selected.map(p => ({
-                id: p.id,
+            photos: state.photos.map(p => ({
                 filename: p.name,
-                comment: p.comment || null,
+                originalFilename: p.originalFilename || p.name,
+                driveFileId: p.id,
+                selected: p.selected,
+                comment: p.comment || '',
+                annotations: (penPaths[state.photos.indexOf(p)] || []).map(path => ({
+                    type: 'freehand',
+                    color: path.color,
+                    points: path.points
+                })),
             })),
         };
 
@@ -686,6 +693,48 @@
 
         showToast('셀렉 파일 다운로드 완료');
         closeSubmitModal();
+    }
+
+    function sharePickshot() {
+        // .pickshot 파일 생성 후 Web Share API로 공유 (모바일)
+        saveCurrentComment();
+        const selected = state.photos.filter(p => p.selected);
+        const result = {
+            version: '1.0',
+            app: 'PickShot Viewer',
+            exportedAt: new Date().toISOString(),
+            session: { id: state.sessionId, name: state.sessionName, client: state.clientName },
+            totalPhotos: state.photos.length,
+            selectedCount: selected.length,
+            photos: state.photos.map(p => ({
+                filename: p.name,
+                originalFilename: p.originalFilename || p.name,
+                selected: p.selected,
+                comment: p.comment || '',
+            })),
+        };
+
+        const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
+        const file = new File([blob], `${state.sessionName}_selection.pickshot`, { type: 'application/json' });
+
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+            // 모바일: 네이티브 공유 (카톡, 메일 등)
+            navigator.share({
+                title: `${state.sessionName} 셀렉 결과`,
+                text: `${selected.length}장 셀렉 완료`,
+                files: [file]
+            }).then(() => {
+                showToast('공유 완료');
+                closeSubmitModal();
+            }).catch(() => {
+                // 공유 취소 — 다운로드로 폴백
+                downloadPickshot();
+            });
+        } else {
+            // PC: 다운로드 후 안내
+            downloadPickshot();
+            showToast('파일을 다운로드했습니다. 카톡이나 메일로 전송해주세요.');
+        }
     }
 
     // ─── State Persistence ───
@@ -830,6 +879,7 @@
         dom.btnModalClose.addEventListener('click', closeSubmitModal);
         dom.submitModal.querySelector('.modal-backdrop').addEventListener('click', closeSubmitModal);
         dom.btnDownloadJson.addEventListener('click', downloadPickshot);
+        document.getElementById('btn-upload-drive')?.addEventListener('click', sharePickshot);
 
         // Comment auto-save
         dom.commentInput.addEventListener('input', () => {
