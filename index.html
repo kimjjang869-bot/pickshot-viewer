@@ -2,69 +2,176 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>PickShot Viewer</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📷</text></svg>">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>PickShot - 사진 셀렉</title>
-    <link rel="stylesheet" href="style.css">
+    <meta name="theme-color" content="#1a1a2e">
 </head>
 <body>
-    <!-- Header -->
-    <header id="header">
-        <div class="header-left">
-            <span class="logo">PickShot</span>
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-screen">
+        <div class="loading-content">
+            <div class="loading-logo">PickShot</div>
+            <div class="loading-subtitle">Client Viewer</div>
+            <div class="loading-spinner"></div>
+            <div id="loading-message" class="loading-message">로딩 중...</div>
         </div>
-        <div class="header-center">
-            <span id="selectCount">0</span>장 선택
-        </div>
-        <div class="header-right">
-            <span id="totalCount">0</span>장
-        </div>
-    </header>
-
-    <!-- Loading -->
-    <div id="loading">
-        <div class="spinner"></div>
-        <p>사진을 불러오는 중...</p>
-        <p id="loadingProgress"></p>
     </div>
 
-    <!-- Error -->
-    <div id="error" style="display:none">
-        <p>사진을 불러올 수 없습니다</p>
-        <p id="errorMessage"></p>
-    </div>
-
-    <!-- Photo Grid -->
-    <main id="grid"></main>
-
-    <!-- Floating Complete Button -->
-    <button id="completeBtn" onclick="completeSelection()">
-        <span id="completeBtnCount">0</span>장 셀렉 완료
-    </button>
-
-    <!-- Confirm Modal -->
-    <div id="confirmModal" class="modal" style="display:none">
-        <div class="modal-content">
-            <h2>셀렉 완료</h2>
-            <p><strong id="confirmCount">0</strong>장을 선택했습니다.</p>
-            <p class="modal-sub">포토그래퍼에게 전달됩니다.</p>
-            <div class="modal-buttons">
-                <button class="btn-cancel" onclick="closeModal()">취소</button>
-                <button class="btn-confirm" onclick="submitSelection()">확인</button>
+    <!-- Empty State -->
+    <div id="empty-state" class="empty-state hidden">
+        <div class="empty-content">
+            <div class="empty-icon">📷</div>
+            <h2>PickShot Viewer</h2>
+            <p>세션 정보가 없습니다.</p>
+            <p class="empty-hint">URL에 세션 파라미터를 포함해주세요:<br>
+                <code>?session=FOLDER_ID&amp;name=SESSION_NAME&amp;client=CLIENT_NAME</code>
+            </p>
+            <div class="empty-actions">
+                <button id="btn-load-demo" class="btn btn-primary">데모 모드로 보기</button>
+                <label class="btn btn-secondary" for="manifest-input">매니페스트 파일 열기</label>
+                <input type="file" id="manifest-input" accept=".json" style="display:none">
             </div>
         </div>
     </div>
 
-    <!-- Done Modal -->
-    <div id="doneModal" class="modal" style="display:none">
+    <!-- Main App -->
+    <div id="app" class="app hidden">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <span class="header-logo">PickShot</span>
+                <span class="header-separator">|</span>
+                <span id="session-name" class="header-session"></span>
+            </div>
+            <div class="header-center">
+                <span id="client-name" class="header-client"></span>
+            </div>
+            <div class="header-right">
+                <span id="selection-count" class="header-count">선택: 0 / 전체: 0</span>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Sidebar: Thumbnail Grid -->
+            <aside id="sidebar" class="sidebar">
+                <div class="sidebar-header">
+                    <span class="sidebar-title">사진 목록</span>
+                    <div class="sidebar-controls">
+                        <button id="btn-select-all" class="btn-icon" title="전체 선택">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="14" height="14" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M4 8l3 3 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </button>
+                        <button id="btn-deselect-all" class="btn-icon" title="선택 해제">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="14" height="14" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M5 5l6 6M11 5l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div id="thumbnail-grid" class="thumbnail-grid"></div>
+            </aside>
+
+            <!-- Preview Area -->
+            <div class="preview-area">
+                <div id="preview-container" class="preview-container">
+                    <img id="preview-image" class="preview-image" alt="Preview" draggable="false">
+                    <div id="preview-loading" class="preview-loading hidden">
+                        <div class="loading-spinner small"></div>
+                    </div>
+                    <!-- Pen tool canvas overlay placeholder -->
+                    <canvas id="drawing-canvas" class="drawing-canvas hidden"></canvas>
+                </div>
+
+                <!-- Photo Info & Comment -->
+                <div class="preview-footer">
+                    <div class="photo-info">
+                        <span id="photo-filename" class="photo-filename"></span>
+                        <span id="photo-index" class="photo-index"></span>
+                    </div>
+                    <div class="comment-area">
+                        <textarea id="comment-input" class="comment-input" placeholder="코멘트를 입력하세요..." rows="2"></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Bar -->
+        <footer class="bottom-bar">
+            <div class="bottom-left">
+                <button id="btn-prev" class="btn btn-nav" title="이전">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M12 4l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+                <button id="btn-next" class="btn btn-nav" title="다음">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M8 4l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+                <span class="nav-divider"></span>
+                <button id="btn-sp" class="btn btn-sp" title="SP 선택 (Space)">SP 선택</button>
+            </div>
+            <div class="bottom-center">
+                <button id="btn-zoom" class="btn btn-tool" title="확대/축소">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="7.5" cy="7.5" r="5.5" stroke="currentColor" stroke-width="1.5"/><path d="M12 12l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M5.5 7.5h4M7.5 5.5v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                </button>
+                <button id="btn-pen" class="btn btn-tool" title="펜 도구 (준비 중)" disabled>
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2 16l1.5-5L13 1.5 16.5 5 7 14.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M3.5 11L7 14.5" stroke="currentColor" stroke-width="1.5"/></svg>
+                    <span class="btn-label">펜 (준비 중)</span>
+                </button>
+                <button id="btn-filter-selected" class="btn btn-tool" title="선택된 사진만 보기">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M1 3h16M3 7h12M5 11h8M7 15h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                    <span class="btn-label">필터</span>
+                </button>
+            </div>
+            <div class="bottom-right">
+                <button id="btn-submit" class="btn btn-submit">셀렉 완료</button>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Submit Modal -->
+    <div id="submit-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
         <div class="modal-content">
-            <div class="done-icon">&#10003;</div>
-            <h2>전송 완료!</h2>
-            <p><strong id="doneCount">0</strong>장이 전달되었습니다.</p>
-            <p class="modal-sub">감사합니다.</p>
+            <div class="modal-header">
+                <h3>셀렉 완료</h3>
+                <button id="btn-modal-close" class="btn-icon modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="submit-summary">
+                    <div class="summary-item">
+                        <span class="summary-label">세션</span>
+                        <span id="submit-session" class="summary-value"></span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">클라이언트</span>
+                        <span id="submit-client" class="summary-value"></span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">선택한 사진</span>
+                        <span id="submit-count" class="summary-value"></span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">코멘트 있는 사진</span>
+                        <span id="submit-comments" class="summary-value"></span>
+                    </div>
+                </div>
+                <div id="selected-list" class="selected-list"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="btn-download-json" class="btn btn-primary">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1v10M4 8l4 4 4-4M2 13h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    .pickshot 다운로드
+                </button>
+                <button id="btn-upload-drive" class="btn btn-secondary" disabled>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 11V1M4 4l4-4 4 4M2 13h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    Drive 업로드 (준비 중)
+                </button>
+            </div>
         </div>
     </div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast hidden"></div>
 
     <script src="app.js"></script>
 </body>

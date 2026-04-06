@@ -1,319 +1,724 @@
 // PickShot Web Viewer - Client Photo Selection
-// Loads photos from Google Drive folder, allows selection, saves .pickshot result
+// Pure client-side: Google Drive API + local manifest support
 
-(function() {
+(function () {
     'use strict';
 
-    // === State ===
-    let photos = [];          // [{id, name, thumbnailUrl, selected}]
-    let folderId = '';
-    let accessToken = '';
-    let folderName = '';
-    const STORAGE_KEY = 'pickshot_selections';
+    // ─── Config ───
+    const GOOGLE_API_KEY = ''; // Set your API key for public folders
+    const IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|tiff?|heic|bmp)$/i;
 
-    // === Init ===
-    window.addEventListener('DOMContentLoaded', init);
+    // ─── State ───
+    const state = {
+        sessionId: '',
+        sessionName: '',
+        clientName: '',
+        photos: [],       // [{id, name, thumbUrl, fullUrl, selected, comment}]
+        currentIndex: 0,
+        zoomed: false,
+        filterSelected: false,
+        isDragging: false,
+        dragStart: { x: 0, y: 0 },
+        scrollStart: { x: 0, y: 0 },
+        touchStartX: 0,
+    };
 
+    // ─── DOM Refs ───
+    const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => document.querySelectorAll(sel);
+
+    const dom = {};
+
+    function cacheDom() {
+        dom.loadingScreen = $('#loading-screen');
+        dom.loadingMessage = $('#loading-message');
+        dom.emptyState = $('#empty-state');
+        dom.app = $('#app');
+        dom.sessionName = $('#session-name');
+        dom.clientName = $('#client-name');
+        dom.selectionCount = $('#selection-count');
+        dom.thumbnailGrid = $('#thumbnail-grid');
+        dom.previewContainer = $('#preview-container');
+        dom.previewImage = $('#preview-image');
+        dom.previewLoading = $('#preview-loading');
+        dom.photoFilename = $('#photo-filename');
+        dom.photoIndex = $('#photo-index');
+        dom.commentInput = $('#comment-input');
+        dom.btnPrev = $('#btn-prev');
+        dom.btnNext = $('#btn-next');
+        dom.btnSp = $('#btn-sp');
+        dom.btnZoom = $('#btn-zoom');
+        dom.btnPen = $('#btn-pen');
+        dom.btnFilterSelected = $('#btn-filter-selected');
+        dom.btnSubmit = $('#btn-submit');
+        dom.btnSelectAll = $('#btn-select-all');
+        dom.btnDeselectAll = $('#btn-deselect-all');
+        dom.btnLoadDemo = $('#btn-load-demo');
+        dom.manifestInput = $('#manifest-input');
+        dom.submitModal = $('#submit-modal');
+        dom.btnModalClose = $('#btn-modal-close');
+        dom.submitSession = $('#submit-session');
+        dom.submitClient = $('#submit-client');
+        dom.submitCount = $('#submit-count');
+        dom.submitComments = $('#submit-comments');
+        dom.selectedList = $('#selected-list');
+        dom.btnDownloadJson = $('#btn-download-json');
+        dom.toast = $('#toast');
+    }
+
+    // ─── Init ───
     function init() {
-        const params = new URLSearchParams(window.location.search);
-        folderId = params.get('folder') || '';
-        accessToken = params.get('token') || '';
-        folderName = params.get('name') || 'PickShot';
+        cacheDom();
+        parseUrlParams();
+        bindEvents();
 
-        if (!folderId || !accessToken) {
-            showError('링크가 올바르지 않습니다. 포토그래퍼에게 다시 요청해주세요.');
+        if (state.sessionId) {
+            loadFromGoogleDrive(state.sessionId);
+        } else {
+            hideLoading();
+            dom.emptyState.classList.remove('hidden');
+        }
+    }
+
+    function parseUrlParams() {
+        const params = new URLSearchParams(window.location.search);
+        state.sessionId = params.get('session') || '';
+        state.sessionName = params.get('name') || '세션';
+        state.clientName = params.get('client') || '클라이언트';
+    }
+
+    // ─── Loading ───
+    function showLoading(msg) {
+        dom.loadingScreen.classList.remove('hidden', 'fade-out');
+        dom.loadingMessage.textContent = msg || '로딩 중...';
+    }
+
+    function hideLoading() {
+        dom.loadingScreen.classList.add('fade-out');
+        setTimeout(() => dom.loadingScreen.classList.add('hidden'), 300);
+    }
+
+    // ─── Google Drive ───
+    async function loadFromGoogleDrive(folderId) {
+        showLoading('Google Drive에서 사진 불러오는 중...');
+
+        // First try loading manifest.json from the folder
+        try {
+            const manifestUrl = `https://drive.google.com/uc?id=${folderId}&export=download`;
+            // Try to fetch manifest from folder — this works if folderId points to a manifest file
+            // Otherwise, use the Drive API
+        } catch (e) { /* continue to API */ }
+
+        // Use Google Drive API (requires API key for public folders)
+        const apiKey = GOOGLE_API_KEY;
+        if (!apiKey) {
+            // No API key — try loading manifest.json relative path
+            try {
+                const resp = await fetch('manifest.json');
+                if (resp.ok) {
+                    const manifest = await resp.json();
+                    loadFromManifest(manifest);
+                    return;
+                }
+            } catch (e) { /* no manifest */ }
+
+            hideLoading();
+            dom.emptyState.classList.remove('hidden');
+            showToast('Google Drive API 키가 설정되지 않았습니다. 매니페스트 파일을 사용하세요.');
             return;
         }
 
-        document.querySelector('.logo').textContent = folderName;
-        loadPhotos();
-    }
-
-    // === Google Drive API ===
-    async function loadPhotos() {
         try {
-            const query = `'${folderId}' in parents and mimeType contains 'image/' and trashed=false`;
-            const fields = 'files(id,name,thumbnailLink,webContentLink)';
-            const orderBy = 'name';
-            let allFiles = [];
-            let pageToken = '';
+            const query = `'${folderId}' in parents and trashed=false and (${
+                ['image/jpeg','image/png','image/webp','image/tiff','image/heic']
+                    .map(m => `mimeType='${m}'`).join(' or ')
+            })`;
+            const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,mimeType,thumbnailLink)&pageSize=1000&orderBy=name&key=${apiKey}`;
 
-            do {
-                const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=nextPageToken,${fields}&orderBy=${orderBy}&pageSize=1000${pageToken ? '&pageToken=' + pageToken : ''}`;
-                const res = await fetch(url, {
-                    headers: { 'Authorization': `Bearer ${accessToken}` }
-                });
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error(`Drive API error: ${resp.status}`);
+            const data = await resp.json();
 
-                if (!res.ok) {
-                    if (res.status === 401) {
-                        showError('링크가 만료되었습니다. 포토그래퍼에게 새 링크를 요청해주세요.');
-                    } else {
-                        showError('사진을 불러올 수 없습니다. (오류: ' + res.status + ')');
-                    }
-                    return;
-                }
-
-                const data = await res.json();
-                allFiles = allFiles.concat(data.files || []);
-                pageToken = data.nextPageToken || '';
-
-                document.getElementById('loadingProgress').textContent =
-                    `${allFiles.length}장 발견...`;
-            } while (pageToken);
-
-            if (allFiles.length === 0) {
-                showError('폴더에 사진이 없습니다.');
+            if (!data.files || data.files.length === 0) {
+                hideLoading();
+                dom.emptyState.classList.remove('hidden');
+                showToast('폴더에 사진이 없습니다.');
                 return;
             }
 
-            // Restore saved selections
-            const saved = loadSavedSelections();
-
-            photos = allFiles.map((f, i) => ({
+            state.photos = data.files.map((f, i) => ({
                 id: f.id,
                 name: f.name,
-                thumbnailUrl: f.thumbnailLink ? f.thumbnailLink.replace('=s220', '=s400') : '',
-                fullUrl: f.webContentLink || '',
-                selected: saved.includes(f.name),
-                index: i
+                thumbUrl: f.thumbnailLink ? f.thumbnailLink.replace(/=s\d+/, '=s300') : `https://drive.google.com/thumbnail?id=${f.id}&sz=w300`,
+                fullUrl: `https://drive.google.com/uc?id=${f.id}`,
+                selected: false,
+                comment: '',
             }));
 
-            document.getElementById('totalCount').textContent = photos.length;
-            updateSelectCount();
-
-            // Hide loading, show grid
-            document.getElementById('loading').style.display = 'none';
-            renderGrid();
-
-            // Start multi-threaded preloading
-            preloadImages();
-
+            startApp();
         } catch (err) {
-            showError('네트워크 오류: ' + err.message);
+            console.error('Drive load error:', err);
+            hideLoading();
+            dom.emptyState.classList.remove('hidden');
+            showToast('Google Drive 로딩 실패: ' + err.message);
         }
     }
 
-    // === Render ===
-    function renderGrid() {
-        const grid = document.getElementById('grid');
+    // ─── Manifest ───
+    function loadFromManifest(manifest) {
+        // manifest format: { session, client, photos: [{name, thumbUrl, fullUrl}] }
+        if (manifest.session) state.sessionName = manifest.session;
+        if (manifest.client) state.clientName = manifest.client;
+
+        state.photos = (manifest.photos || []).map((p, i) => ({
+            id: p.id || `photo_${i}`,
+            name: p.name || `Photo ${i + 1}`,
+            thumbUrl: p.thumbUrl || p.fullUrl || p.url || '',
+            fullUrl: p.fullUrl || p.url || '',
+            selected: false,
+            comment: '',
+        }));
+
+        startApp();
+    }
+
+    // ─── Demo Mode ───
+    function loadDemoPhotos() {
+        state.sessionName = '데모 세션';
+        state.clientName = '데모 클라이언트';
+
+        // Generate demo photos using picsum
+        const count = 30;
+        state.photos = [];
+        for (let i = 0; i < count; i++) {
+            const seed = 100 + i;
+            state.photos.push({
+                id: `demo_${i}`,
+                name: `DSC_${String(1000 + i).padStart(4, '0')}.jpg`,
+                thumbUrl: `https://picsum.photos/seed/${seed}/300/300`,
+                fullUrl: `https://picsum.photos/seed/${seed}/1600/1200`,
+                selected: false,
+                comment: '',
+            });
+        }
+
+        startApp();
+    }
+
+    // ─── Start App ───
+    function startApp() {
+        hideLoading();
+        dom.emptyState.classList.add('hidden');
+        dom.app.classList.remove('hidden');
+
+        dom.sessionName.textContent = state.sessionName;
+        dom.clientName.textContent = state.clientName;
+
+        renderThumbnails();
+        if (state.photos.length > 0) {
+            selectPhoto(0);
+        }
+        updateCounts();
+
+        // Restore from localStorage
+        restoreState();
+    }
+
+    // ─── Thumbnails ───
+    function renderThumbnails() {
+        const grid = dom.thumbnailGrid;
         grid.innerHTML = '';
 
-        photos.forEach((photo, i) => {
-            const div = document.createElement('div');
-            div.className = 'photo' + (photo.selected ? ' selected' : '');
-            div.dataset.index = i;
-            div.onclick = () => toggleSelect(i);
+        const visiblePhotos = getVisiblePhotos();
 
-            // Check mark
-            const check = document.createElement('div');
-            check.className = 'check';
-            check.textContent = '\u2713';
+        visiblePhotos.forEach((photo, vIdx) => {
+            const realIdx = state.photos.indexOf(photo);
+            const item = document.createElement('div');
+            item.className = 'thumb-item';
+            item.dataset.index = realIdx;
+            if (realIdx === state.currentIndex) item.classList.add('active');
+            if (photo.selected) item.classList.add('selected');
 
-            // Image
             const img = document.createElement('img');
             img.className = 'loading';
             img.alt = photo.name;
             img.loading = 'lazy';
+            img.src = photo.thumbUrl;
+            img.onload = () => img.classList.remove('loading');
+            img.onerror = () => {
+                img.src = 'data:image/svg+xml,' + encodeURIComponent(
+                    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect fill="#333" width="100" height="100"/><text fill="#666" font-size="12" x="50" y="55" text-anchor="middle">No Image</text></svg>'
+                );
+            };
 
-            // Use thumbnail URL
-            if (photo.thumbnailUrl) {
-                img.src = photo.thumbnailUrl;
-                img.onload = () => img.className = 'loaded';
-                img.onerror = () => {
-                    // Fallback: show skeleton
-                    const skel = document.createElement('div');
-                    skel.className = 'skeleton';
-                    div.insertBefore(skel, check);
-                    img.style.display = 'none';
-                };
-            } else {
-                const skel = document.createElement('div');
-                skel.className = 'skeleton';
-                div.appendChild(skel);
-            }
+            const num = document.createElement('span');
+            num.className = 'thumb-number';
+            num.textContent = realIdx + 1;
 
-            // Number label
-            const num = document.createElement('div');
-            num.className = 'num';
-            num.textContent = i + 1;
+            item.appendChild(img);
+            item.appendChild(num);
+            item.addEventListener('click', () => selectPhoto(realIdx));
 
-            div.appendChild(img);
-            div.appendChild(check);
-            div.appendChild(num);
-            grid.appendChild(div);
+            grid.appendChild(item);
         });
     }
 
-    // === Selection ===
-    function toggleSelect(index) {
-        photos[index].selected = !photos[index].selected;
-
-        // Update DOM
-        const div = document.querySelectorAll('.photo')[index];
-        if (div) {
-            div.classList.toggle('selected', photos[index].selected);
+    function getVisiblePhotos() {
+        if (state.filterSelected) {
+            return state.photos.filter(p => p.selected);
         }
+        return state.photos;
+    }
 
-        updateSelectCount();
-        saveSelections();
+    function updateThumbnailStates() {
+        const items = dom.thumbnailGrid.querySelectorAll('.thumb-item');
+        items.forEach(item => {
+            const idx = parseInt(item.dataset.index);
+            const photo = state.photos[idx];
+            item.classList.toggle('active', idx === state.currentIndex);
+            item.classList.toggle('selected', photo && photo.selected);
+        });
+    }
 
-        // Haptic feedback (if available)
-        if (navigator.vibrate) {
-            navigator.vibrate(10);
+    function scrollThumbnailIntoView(index) {
+        const item = dom.thumbnailGrid.querySelector(`[data-index="${index}"]`);
+        if (item) {
+            item.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
         }
     }
 
-    function updateSelectCount() {
-        const count = photos.filter(p => p.selected).length;
-        document.getElementById('selectCount').textContent = count;
-        document.getElementById('completeBtnCount').textContent = count;
+    // ─── Photo Selection ───
+    function selectPhoto(index) {
+        if (index < 0 || index >= state.photos.length) return;
 
-        const btn = document.getElementById('completeBtn');
-        btn.disabled = count === 0;
+        // Save comment from previous photo
+        saveCurrentComment();
+
+        state.currentIndex = index;
+        const photo = state.photos[index];
+
+        // Update preview
+        dom.previewLoading.classList.remove('hidden');
+        dom.previewImage.src = '';
+
+        const img = new Image();
+        img.onload = () => {
+            dom.previewImage.src = img.src;
+            dom.previewLoading.classList.add('hidden');
+        };
+        img.onerror = () => {
+            dom.previewImage.src = photo.thumbUrl; // fallback to thumb
+            dom.previewLoading.classList.add('hidden');
+        };
+        img.src = photo.fullUrl;
+
+        // Update info
+        dom.photoFilename.textContent = photo.name;
+        dom.photoIndex.textContent = `${index + 1} / ${state.photos.length}`;
+        dom.commentInput.value = photo.comment || '';
+
+        // Update SP button state
+        dom.btnSp.classList.toggle('active', photo.selected);
+
+        // Reset zoom
+        if (state.zoomed) toggleZoom();
+
+        // Update thumbnail highlights
+        updateThumbnailStates();
+        scrollThumbnailIntoView(index);
+
+        updateCounts();
     }
 
-    // === Persistence ===
-    function saveSelections() {
-        const selected = photos.filter(p => p.selected).map(p => p.name);
-        try {
-            localStorage.setItem(STORAGE_KEY + '_' + folderId, JSON.stringify(selected));
-        } catch (e) { /* ignore */ }
+    function navigatePrev() {
+        if (state.filterSelected) {
+            const visible = getVisiblePhotos();
+            const curVIdx = visible.indexOf(state.photos[state.currentIndex]);
+            if (curVIdx > 0) {
+                selectPhoto(state.photos.indexOf(visible[curVIdx - 1]));
+            }
+        } else {
+            if (state.currentIndex > 0) selectPhoto(state.currentIndex - 1);
+        }
     }
 
-    function loadSavedSelections() {
-        try {
-            const data = localStorage.getItem(STORAGE_KEY + '_' + folderId);
-            return data ? JSON.parse(data) : [];
-        } catch (e) { return []; }
+    function navigateNext() {
+        if (state.filterSelected) {
+            const visible = getVisiblePhotos();
+            const curVIdx = visible.indexOf(state.photos[state.currentIndex]);
+            if (curVIdx < visible.length - 1) {
+                selectPhoto(state.photos.indexOf(visible[curVIdx + 1]));
+            }
+        } else {
+            if (state.currentIndex < state.photos.length - 1) selectPhoto(state.currentIndex + 1);
+        }
     }
 
-    // === Complete Selection ===
-    window.completeSelection = function() {
-        const count = photos.filter(p => p.selected).length;
-        if (count === 0) return;
+    // ─── SP Select ───
+    function toggleSp(index) {
+        if (index === undefined) index = state.currentIndex;
+        const photo = state.photos[index];
+        if (!photo) return;
+        photo.selected = !photo.selected;
 
-        document.getElementById('confirmCount').textContent = count;
-        document.getElementById('confirmModal').style.display = 'flex';
-    };
+        dom.btnSp.classList.toggle('active', photo.selected);
+        updateThumbnailStates();
+        updateCounts();
+        saveState();
+    }
 
-    window.closeModal = function() {
-        document.getElementById('confirmModal').style.display = 'none';
-    };
+    function selectAll() {
+        state.photos.forEach(p => p.selected = true);
+        updateThumbnailStates();
+        updateCounts();
+        dom.btnSp.classList.toggle('active', state.photos[state.currentIndex]?.selected);
+        saveState();
+        showToast('전체 선택됨');
+    }
 
-    window.submitSelection = async function() {
-        document.getElementById('confirmModal').style.display = 'none';
+    function deselectAll() {
+        state.photos.forEach(p => p.selected = false);
+        updateThumbnailStates();
+        updateCounts();
+        dom.btnSp.classList.toggle('active', false);
+        saveState();
+        showToast('선택 해제됨');
+    }
 
-        const selected = photos.filter(p => p.selected);
+    // ─── Comments ───
+    function saveCurrentComment() {
+        const photo = state.photos[state.currentIndex];
+        if (photo && dom.commentInput) {
+            photo.comment = dom.commentInput.value.trim();
+        }
+    }
 
-        // Build .pickshot JSON
-        const pickshot = {
+    // ─── Zoom ───
+    function toggleZoom() {
+        state.zoomed = !state.zoomed;
+        dom.previewContainer.classList.toggle('zoomed', state.zoomed);
+        dom.btnZoom.classList.toggle('active', state.zoomed);
+
+        if (!state.zoomed) {
+            dom.previewContainer.scrollTop = 0;
+            dom.previewContainer.scrollLeft = 0;
+        }
+    }
+
+    // ─── Filter ───
+    function toggleFilter() {
+        state.filterSelected = !state.filterSelected;
+        dom.btnFilterSelected.classList.toggle('active', state.filterSelected);
+        renderThumbnails();
+        showToast(state.filterSelected ? '선택된 사진만 표시' : '전체 사진 표시');
+    }
+
+    // ─── Counts ───
+    function updateCounts() {
+        const selected = state.photos.filter(p => p.selected).length;
+        const total = state.photos.length;
+        dom.selectionCount.textContent = `선택: ${selected} / 전체: ${total}`;
+    }
+
+    // ─── Submit ───
+    function openSubmitModal() {
+        saveCurrentComment();
+
+        const selected = state.photos.filter(p => p.selected);
+        const withComments = selected.filter(p => p.comment);
+
+        dom.submitSession.textContent = state.sessionName;
+        dom.submitClient.textContent = state.clientName;
+        dom.submitCount.textContent = `${selected.length}장`;
+        dom.submitComments.textContent = `${withComments.length}장`;
+
+        // Render selected list
+        dom.selectedList.innerHTML = '';
+        selected.forEach(photo => {
+            const item = document.createElement('div');
+            item.className = 'selected-item';
+
+            const thumb = document.createElement('img');
+            thumb.className = 'selected-item-thumb';
+            thumb.src = photo.thumbUrl;
+            thumb.alt = photo.name;
+
+            const name = document.createElement('span');
+            name.className = 'selected-item-name';
+            name.textContent = photo.name;
+
+            item.appendChild(thumb);
+            item.appendChild(name);
+
+            if (photo.comment) {
+                const comment = document.createElement('span');
+                comment.className = 'selected-item-comment';
+                comment.textContent = photo.comment;
+                item.appendChild(comment);
+            }
+
+            dom.selectedList.appendChild(item);
+        });
+
+        dom.submitModal.classList.remove('hidden');
+    }
+
+    function closeSubmitModal() {
+        dom.submitModal.classList.add('hidden');
+    }
+
+    function downloadPickshot() {
+        saveCurrentComment();
+
+        const selected = state.photos.filter(p => p.selected);
+        const result = {
             version: '1.0',
-            appVersion: 'PickShot WebViewer',
-            exportDate: new Date().toISOString(),
-            sourceFolderName: folderName,
-            totalPhotos: photos.length,
-            selectedPhotos: selected.length,
-            files: selected.map(p => ({
-                name: p.name.replace(/\.[^.]+$/, ''),  // Remove extension
-                rating: 1,
-                spacePick: false,
-                gSelect: true,
-                colorLabel: 'none',
-                comments: []
-            }))
+            app: 'PickShot Viewer',
+            exportedAt: new Date().toISOString(),
+            session: {
+                id: state.sessionId,
+                name: state.sessionName,
+                client: state.clientName,
+            },
+            totalPhotos: state.photos.length,
+            selectedCount: selected.length,
+            selections: selected.map(p => ({
+                id: p.id,
+                filename: p.name,
+                comment: p.comment || null,
+            })),
         };
 
-        const jsonStr = JSON.stringify(pickshot, null, 2);
-        const blob = new Blob([jsonStr], { type: 'application/json' });
-
-        try {
-            // Upload .pickshot file to the same Google Drive folder
-            const metadata = {
-                name: `client_selection_${new Date().toISOString().slice(0,10)}.pickshot`,
-                parents: [folderId],
-                mimeType: 'application/json'
-            };
-
-            const form = new FormData();
-            form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-            form.append('file', blob);
-
-            const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${accessToken}` },
-                body: form
-            });
-
-            if (res.ok) {
-                document.getElementById('doneCount').textContent = selected.length;
-                document.getElementById('doneModal').style.display = 'flex';
-
-                // Clear saved selections
-                localStorage.removeItem(STORAGE_KEY + '_' + folderId);
-            } else {
-                // Fallback: download file
-                downloadPickshot(jsonStr);
-            }
-        } catch (err) {
-            // Fallback: download file
-            downloadPickshot(jsonStr);
-        }
-    };
-
-    function downloadPickshot(jsonStr) {
-        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `client_selection.pickshot`;
+        a.download = `${state.sessionName}_${state.clientName}_selection.pickshot`;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        document.getElementById('doneCount').textContent = photos.filter(p => p.selected).length;
-        document.getElementById('doneModal').style.display = 'flex';
+        showToast('셀렉 파일 다운로드 완료');
+        closeSubmitModal();
     }
 
-    // === Multi-threaded Image Preloading ===
-    function preloadImages() {
-        // Use requestIdleCallback for background preloading
-        const batchSize = 6;  // Load 6 images at a time
-        let loadIndex = 0;
+    // ─── State Persistence ───
+    function getStorageKey() {
+        return `pickshot_${state.sessionId || 'local'}_${state.clientName}`;
+    }
 
-        function loadBatch() {
-            const batch = photos.slice(loadIndex, loadIndex + batchSize);
-            if (batch.length === 0) return;
-
-            const promises = batch.map(photo => {
-                if (!photo.thumbnailUrl) return Promise.resolve();
-                return new Promise(resolve => {
-                    const img = new Image();
-                    img.onload = resolve;
-                    img.onerror = resolve;
-                    img.src = photo.thumbnailUrl;
-                });
+    function saveState() {
+        try {
+            const data = {
+                selections: {},
+                comments: {},
+            };
+            state.photos.forEach(p => {
+                if (p.selected) data.selections[p.id] = true;
+                if (p.comment) data.comments[p.id] = p.comment;
             });
+            localStorage.setItem(getStorageKey(), JSON.stringify(data));
+        } catch (e) { /* quota exceeded, ignore */ }
+    }
 
-            Promise.all(promises).then(() => {
-                loadIndex += batchSize;
-                if (loadIndex < photos.length) {
-                    if ('requestIdleCallback' in window) {
-                        requestIdleCallback(loadBatch);
-                    } else {
-                        setTimeout(loadBatch, 50);
-                    }
-                }
+    function restoreState() {
+        try {
+            const raw = localStorage.getItem(getStorageKey());
+            if (!raw) return;
+            const data = JSON.parse(raw);
+            state.photos.forEach(p => {
+                if (data.selections && data.selections[p.id]) p.selected = true;
+                if (data.comments && data.comments[p.id]) p.comment = data.comments[p.id];
             });
+            updateThumbnailStates();
+            updateCounts();
+            // Refresh current photo
+            if (state.photos[state.currentIndex]) {
+                dom.commentInput.value = state.photos[state.currentIndex].comment || '';
+                dom.btnSp.classList.toggle('active', state.photos[state.currentIndex].selected);
+            }
+        } catch (e) { /* ignore */ }
+    }
+
+    // ─── Toast ───
+    function showToast(msg) {
+        dom.toast.textContent = msg;
+        dom.toast.classList.remove('hidden', 'fade-out');
+        clearTimeout(showToast._timer);
+        showToast._timer = setTimeout(() => {
+            dom.toast.classList.add('fade-out');
+            setTimeout(() => dom.toast.classList.add('hidden'), 300);
+        }, 2000);
+    }
+
+    // ─── Drag to pan (zoomed) ───
+    function onPreviewMouseDown(e) {
+        if (!state.zoomed) return;
+        state.isDragging = true;
+        state.dragStart = { x: e.clientX, y: e.clientY };
+        state.scrollStart = {
+            x: dom.previewContainer.scrollLeft,
+            y: dom.previewContainer.scrollTop,
+        };
+        dom.previewImage.classList.add('grabbing');
+        e.preventDefault();
+    }
+
+    function onPreviewMouseMove(e) {
+        if (!state.isDragging) return;
+        const dx = e.clientX - state.dragStart.x;
+        const dy = e.clientY - state.dragStart.y;
+        dom.previewContainer.scrollLeft = state.scrollStart.x - dx;
+        dom.previewContainer.scrollTop = state.scrollStart.y - dy;
+    }
+
+    function onPreviewMouseUp() {
+        state.isDragging = false;
+        dom.previewImage.classList.remove('grabbing');
+    }
+
+    // ─── Touch swipe ───
+    function onTouchStart(e) {
+        if (state.zoomed) return;
+        state.touchStartX = e.touches[0].clientX;
+    }
+
+    function onTouchEnd(e) {
+        if (state.zoomed) return;
+        const dx = e.changedTouches[0].clientX - state.touchStartX;
+        if (Math.abs(dx) > 50) {
+            if (dx > 0) navigatePrev();
+            else navigateNext();
         }
-
-        // Start after initial render
-        setTimeout(loadBatch, 500);
     }
 
-    // === Error ===
-    function showError(msg) {
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('error').style.display = 'flex';
-        document.getElementById('errorMessage').textContent = msg;
+    // ─── Events ───
+    function bindEvents() {
+        // Navigation
+        dom.btnPrev.addEventListener('click', navigatePrev);
+        dom.btnNext.addEventListener('click', navigateNext);
+
+        // SP Select
+        dom.btnSp.addEventListener('click', () => { toggleSp(); saveState(); });
+
+        // Zoom
+        dom.btnZoom.addEventListener('click', toggleZoom);
+        dom.previewContainer.addEventListener('click', (e) => {
+            if (e.target === dom.previewImage || e.target === dom.previewContainer) {
+                if (!state.isDragging) toggleZoom();
+            }
+        });
+
+        // Pan when zoomed
+        dom.previewContainer.addEventListener('mousedown', onPreviewMouseDown);
+        window.addEventListener('mousemove', onPreviewMouseMove);
+        window.addEventListener('mouseup', onPreviewMouseUp);
+
+        // Touch swipe
+        dom.previewContainer.addEventListener('touchstart', onTouchStart, { passive: true });
+        dom.previewContainer.addEventListener('touchend', onTouchEnd, { passive: true });
+
+        // Filter
+        dom.btnFilterSelected.addEventListener('click', toggleFilter);
+
+        // Select all / deselect
+        dom.btnSelectAll.addEventListener('click', selectAll);
+        dom.btnDeselectAll.addEventListener('click', deselectAll);
+
+        // Submit
+        dom.btnSubmit.addEventListener('click', openSubmitModal);
+        dom.btnModalClose.addEventListener('click', closeSubmitModal);
+        dom.submitModal.querySelector('.modal-backdrop').addEventListener('click', closeSubmitModal);
+        dom.btnDownloadJson.addEventListener('click', downloadPickshot);
+
+        // Comment auto-save
+        dom.commentInput.addEventListener('input', () => {
+            saveCurrentComment();
+            saveState();
+        });
+
+        // Pen placeholder
+        dom.btnPen.addEventListener('click', () => {
+            showToast('펜 도구는 다음 업데이트에서 지원됩니다.');
+        });
+
+        // Empty state
+        dom.btnLoadDemo.addEventListener('click', () => {
+            dom.emptyState.classList.add('hidden');
+            showLoading('데모 사진 생성 중...');
+            setTimeout(loadDemoPhotos, 300);
+        });
+
+        dom.manifestInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            dom.emptyState.classList.add('hidden');
+            showLoading('매니페스트 로딩 중...');
+            const reader = new FileReader();
+            reader.onload = () => {
+                try {
+                    const manifest = JSON.parse(reader.result);
+                    loadFromManifest(manifest);
+                } catch (err) {
+                    hideLoading();
+                    dom.emptyState.classList.remove('hidden');
+                    showToast('잘못된 매니페스트 파일입니다.');
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        // Keyboard
+        document.addEventListener('keydown', (e) => {
+            // Don't capture if typing in comment
+            if (e.target === dom.commentInput) {
+                if (e.key === 'Escape') dom.commentInput.blur();
+                return;
+            }
+
+            switch (e.key) {
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    navigatePrev();
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    navigateNext();
+                    break;
+                case ' ':
+                    e.preventDefault();
+                    toggleSp();
+                    saveState();
+                    break;
+                case 'Escape':
+                    if (!dom.submitModal.classList.contains('hidden')) {
+                        closeSubmitModal();
+                    } else if (state.zoomed) {
+                        toggleZoom();
+                    }
+                    break;
+                case 'f':
+                case 'F':
+                    toggleFilter();
+                    break;
+                case 'z':
+                case 'Z':
+                    toggleZoom();
+                    break;
+            }
+        });
+
+        // Prevent accidental back navigation
+        window.addEventListener('beforeunload', (e) => {
+            const hasSelections = state.photos.some(p => p.selected);
+            if (hasSelections) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
     }
 
+    // ─── Boot ───
+    document.addEventListener('DOMContentLoaded', init);
 })();
