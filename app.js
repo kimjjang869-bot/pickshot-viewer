@@ -6,7 +6,7 @@
 
     // ─── Config ───
     const GOOGLE_API_KEY = ''; // Set your API key for public folders
-    const GOOGLE_WEB_CLIENT_ID = ''; // Will be set after user creates OAuth web client
+    const GOOGLE_WEB_CLIENT_ID = '661638823938-0fphunk8t7s2fkih4i8u8e7a81s9eqtu.apps.googleusercontent.com';
     const IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|tiff?|heic|bmp)$/i;
 
     let googleAccessToken = null;
