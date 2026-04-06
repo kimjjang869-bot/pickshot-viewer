@@ -104,8 +104,38 @@
 
         // URL에 manifest 파일 ID가 있으면 직접 다운로드
         const params = new URLSearchParams(window.location.search);
-        // URL 해시(#data=...)에서 Base64 manifest 읽기
+        // URL 해시에서 manifest 읽기
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
+
+        // #gz= : gzip 압축 + Base64 (가장 짧음)
+        const gzParam = hashParams.get('gz');
+        if (gzParam) {
+            try {
+                const binary = atob(gzParam);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                // zlib/deflate 해제 (pako 없이 DecompressionStream 사용)
+                const ds = new DecompressionStream('deflate');
+                const writer = ds.writable.getWriter();
+                writer.write(bytes);
+                writer.close();
+                const reader = ds.readable.getReader();
+                const chunks = [];
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    chunks.push(value);
+                }
+                const decoded = new TextDecoder().decode(new Uint8Array(chunks.flatMap(c => [...c])));
+                const manifest = JSON.parse(decoded);
+                loadFromManifest(manifest);
+                return;
+            } catch (e) {
+                console.log('gz 파라미터 해제 실패:', e);
+            }
+        }
+
+        // #data= : 일반 Base64
         let dataParam = hashParams.get('data') || params.get('data');
         if (dataParam) {
             try {
