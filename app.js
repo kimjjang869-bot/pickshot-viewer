@@ -6,7 +6,10 @@
 
     // ─── Config ───
     const GOOGLE_API_KEY = ''; // Set your API key for public folders
+    const GOOGLE_WEB_CLIENT_ID = ''; // Will be set after user creates OAuth web client
     const IMAGE_EXTENSIONS = /\.(jpe?g|png|webp|tiff?|heic|bmp)$/i;
+
+    let googleAccessToken = null;
 
     // ─── State ───
     const state = {
@@ -652,11 +655,12 @@
         dom.submitModal.classList.add('hidden');
     }
 
-    function downloadPickshot() {
+    // ─── Generate Pickshot JSON (shared between download and upload) ───
+    function generatePickshotJSON() {
         saveCurrentComment();
 
         const selected = state.photos.filter(p => p.selected);
-        const result = {
+        return {
             version: '1.0',
             app: 'PickShot Viewer',
             exportedAt: new Date().toISOString(),
@@ -680,6 +684,10 @@
                 })),
             })),
         };
+    }
+
+    function downloadPickshot() {
+        const result = generatePickshotJSON();
 
         const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -695,6 +703,13 @@
         closeSubmitModal();
     }
 
+    // ─── Google Drive OAuth Upload ───
+    function initGoogleAuth() {
+        // Google Identity Services is loaded async via script tag.
+        // We only initialize the token client when the user clicks "Drive에 전송".
+        // Nothing to do here proactively — the library loads in the background.
+    }
+
     async function uploadToDrive() {
         saveCurrentComment();
         const selected = state.photos.filter(p => p.selected);
@@ -703,31 +718,56 @@
             return;
         }
 
-        const result = {
-            version: '1.0',
-            app: 'PickShot Viewer',
-            exportedAt: new Date().toISOString(),
-            session: { id: state.sessionId, name: state.sessionName, client: state.clientName },
-            totalPhotos: state.photos.length,
-            selectedCount: selected.length,
-            photos: state.photos.map(p => ({
-                filename: p.name,
-                originalFilename: p.originalFilename || p.name,
-                selected: p.selected,
-                comment: p.comment || '',
-                annotations: (typeof penPaths !== 'undefined' ? (penPaths[state.photos.indexOf(p)] || []) : []).map(path => ({
-                    type: 'freehand', color: path.color, points: path.points
-                })),
-            })),
-        };
+        // Case 1: Already have an access token — upload directly
+        if (googleAccessToken) {
+            await doUploadToDrive();
+            return;
+        }
 
+        // Case 2: Client ID is set — trigger OAuth popup
+        if (GOOGLE_WEB_CLIENT_ID) {
+            if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
+                showToast('Google 인증 라이브러리를 로딩 중입니다. 잠시 후 다시 시도해주세요.');
+                return;
+            }
+
+            const tokenClient = google.accounts.oauth2.initTokenClient({
+                client_id: GOOGLE_WEB_CLIENT_ID,
+                scope: 'https://www.googleapis.com/auth/drive.file',
+                callback: async (tokenResponse) => {
+                    if (tokenResponse && tokenResponse.access_token) {
+                        googleAccessToken = tokenResponse.access_token;
+                        await doUploadToDrive();
+                    } else {
+                        showToast('Google 인증이 취소되었습니다.');
+                    }
+                },
+                error_callback: (err) => {
+                    console.error('Google OAuth error:', err);
+                    showToast('Google 인증 실패. 파일을 다운로드합니다.');
+                    downloadPickshot();
+                },
+            });
+
+            tokenClient.requestAccessToken();
+            return;
+        }
+
+        // Case 3: No client ID — fallback to download
+        downloadPickshot();
+        showToast('파일을 다운로드했습니다. Google Drive 폴더에 직접 업로드해주세요.');
+    }
+
+    async function doUploadToDrive() {
+        const result = generatePickshotJSON();
         const jsonStr = JSON.stringify(result, null, 2);
         const filename = `${state.clientName || 'client'}_selection.pickshot`;
 
-        // Google Drive 업로드 (multipart)
         const folderId = state.sessionId;
         const boundary = 'pickshot_boundary_' + Date.now();
-        const metadata = JSON.stringify({ name: filename, parents: [folderId] });
+        const metadata = folderId
+            ? JSON.stringify({ name: filename, parents: [folderId] })
+            : JSON.stringify({ name: filename });
 
         let body = '';
         body += `--${boundary}\r\n`;
@@ -740,29 +780,41 @@
 
         const btn = document.getElementById('btn-upload-drive');
         const originalText = btn.innerHTML;
-        btn.innerHTML = '⏳ 업로드 중...';
+        btn.innerHTML = '업로드 중...';
         btn.disabled = true;
 
         try {
             const resp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
                 method: 'POST',
-                headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
-                body: body
+                headers: {
+                    'Authorization': `Bearer ${googleAccessToken}`,
+                    'Content-Type': `multipart/related; boundary=${boundary}`,
+                },
+                body: body,
             });
 
             if (resp.ok) {
-                showToast('✅ 셀렉 결과가 Google Drive에 저장되었습니다!');
-                btn.innerHTML = '✅ 전송 완료';
+                showToast('셀렉 결과가 Google Drive에 저장되었습니다!');
+                btn.innerHTML = '전송 완료';
                 setTimeout(closeSubmitModal, 1500);
             } else {
-                // API 키 없이는 인증 필요 — 다운로드로 폴백
-                showToast('Drive 직접 업로드는 인증이 필요합니다. 파일을 다운로드해주세요.');
-                downloadPickshot();
-                btn.innerHTML = originalText;
-                btn.disabled = false;
+                const errData = await resp.json().catch(() => ({}));
+                console.error('Drive upload failed:', resp.status, errData);
+                // Token might be expired — clear it
+                if (resp.status === 401) {
+                    googleAccessToken = null;
+                    showToast('인증이 만료되었습니다. 다시 시도해주세요.');
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                } else {
+                    showToast('Drive 업로드 실패. 파일을 다운로드합니다.');
+                    downloadPickshot();
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }
             }
         } catch (e) {
-            // 네트워크 오류 — 다운로드로 폴백
+            console.error('Drive upload error:', e);
             downloadPickshot();
             showToast('파일을 다운로드했습니다. Google Drive 폴더에 직접 업로드해주세요.');
             btn.innerHTML = originalText;
@@ -1261,6 +1313,7 @@
     // ─── Boot ───
     document.addEventListener('DOMContentLoaded', () => {
         init();
+        initGoogleAuth();
         setTimeout(initPenEvents, 500);
         setTimeout(initMobileTouch, 500);
     });
