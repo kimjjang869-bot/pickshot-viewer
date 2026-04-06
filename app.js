@@ -466,6 +466,26 @@
         } else if (typeof redrawPen === 'function') {
             setTimeout(redrawPen, 100);
         }
+
+        // 앞뒤 3장 프리페치 (백그라운드 로드)
+        prefetchNearby(index, 3);
+    }
+
+    // ─── 이미지 프리페치 ───
+    const prefetchCache = new Set();
+    function prefetchNearby(centerIndex, range) {
+        for (let offset = 1; offset <= range; offset++) {
+            [centerIndex + offset, centerIndex - offset].forEach(i => {
+                if (i >= 0 && i < state.photos.length) {
+                    const url = state.photos[i].fullUrl;
+                    if (url && !prefetchCache.has(url)) {
+                        prefetchCache.add(url);
+                        const img = new Image();
+                        img.src = url;  // 브라우저 캐시에 저장
+                    }
+                }
+            });
+        }
     }
 
     function navigatePrev() {
