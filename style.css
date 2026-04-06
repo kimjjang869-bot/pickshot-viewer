@@ -460,17 +460,25 @@ html, body {
     .header-center { display: none; }
     .header-session { font-size: 13px; }
 
-    .bottom-bar { padding: 0 6px; gap: 4px; flex-wrap: wrap; justify-content: center; }
+    .bottom-bar {
+        padding: 6px 8px;
+        height: auto;
+        min-height: var(--bottom-h);
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        gap: 6px;
+    }
     .btn-label { display: none; }
-    .btn-tool { padding: 6px 8px; }
-    .btn-submit { padding: 8px 16px; font-size: 12px; }
-    .btn-sp { padding: 8px 16px; font-size: 13px; font-weight: 700; min-width: 80px; }
-    .btn-nav { padding: 6px 12px; }
-
-    /* 모바일 하단 바: SP + 이전/다음 + 셀렉완료 항상 표시 */
-    .bottom-left { gap: 4px; }
-    .bottom-center { gap: 4px; }
-    .bottom-right { gap: 4px; }
+    .btn-tool { padding: 6px 8px; display: none; }  /* 펜/줌/필터 모바일 숨김 */
+    .btn-submit { padding: 8px 14px; font-size: 13px; font-weight: 700; white-space: nowrap; }
+    .btn-sp { padding: 8px 14px; font-size: 13px; font-weight: 700; white-space: nowrap; }
+    .btn-nav { width: 32px; height: 32px; flex-shrink: 0; }
+    #btn-download-original { display: flex !important; }
+    #btn-download-original .btn-label { display: inline !important; font-size: 11px; }
+    .bottom-left { gap: 4px; flex-shrink: 0; }
+    .bottom-center { gap: 4px; flex-shrink: 0; }
+    .bottom-right { gap: 4px; flex-shrink: 0; }
 
     .modal-content { width: 95%; max-height: 90vh; }
     .submit-summary { grid-template-columns: 1fr; }
