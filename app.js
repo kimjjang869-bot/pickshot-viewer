@@ -194,6 +194,16 @@
 
     // ─── Manifest ───
     function loadFromManifest(manifest) {
+        // 원본 ZIP 다운로드 버튼
+        if (manifest.originalZipFileId) {
+            const dlBtn = document.getElementById('btn-download-original');
+            if (dlBtn) {
+                dlBtn.classList.remove('hidden');
+                dlBtn.addEventListener('click', () => {
+                    window.open(`https://drive.google.com/uc?id=${manifest.originalZipFileId}&export=download`, '_blank');
+                });
+            }
+        }
         if (manifest.sessionName) state.sessionName = manifest.sessionName;
         if (manifest.session) state.sessionName = manifest.session;
         if (manifest.clientName) state.clientName = manifest.clientName;
