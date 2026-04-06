@@ -327,20 +327,22 @@
         state.currentIndex = index;
         const photo = state.photos[index];
 
-        // Update preview
+        // 미리보기: 썸네일 즉시 표시 → 풀이미지 백그라운드 로드
+        dom.previewImage.src = photo.thumbUrl;  // 즉시 표시 (300px)
         dom.previewLoading.classList.remove('hidden');
-        dom.previewImage.src = '';
 
         const img = new Image();
         img.onload = () => {
-            dom.previewImage.src = img.src;
+            // 현재 사진이 아직 같은 사진이면 풀이미지로 교체
+            if (state.currentIndex === index) {
+                dom.previewImage.src = img.src;
+            }
             dom.previewLoading.classList.add('hidden');
         };
         img.onerror = () => {
-            dom.previewImage.src = photo.thumbUrl; // fallback to thumb
             dom.previewLoading.classList.add('hidden');
         };
-        img.src = photo.fullUrl;
+        img.src = photo.fullUrl;  // 백그라운드 로드 (1200px)
 
         // Update info
         dom.photoFilename.textContent = photo.name;
@@ -389,6 +391,28 @@
             }
         } else {
             if (state.currentIndex < state.photos.length - 1) selectPhoto(state.currentIndex + 1);
+        }
+    }
+
+    function navigateByRow(direction) {
+        // 썸네일 그리드에서 한 행의 열 수 계산
+        const grid = dom.thumbnailGrid;
+        const items = grid.querySelectorAll('.thumb-item');
+        if (items.length < 2) return;
+        const firstRect = items[0].getBoundingClientRect();
+        const secondRect = items[1].getBoundingClientRect();
+        // 같은 행이면 가로 배치, 다른 행이면 세로
+        let columnsPerRow = 1;
+        for (let i = 1; i < items.length; i++) {
+            if (items[i].getBoundingClientRect().top > firstRect.top + 5) {
+                columnsPerRow = i;
+                break;
+            }
+        }
+        if (columnsPerRow < 1) columnsPerRow = 1;
+        const newIndex = state.currentIndex + (direction * columnsPerRow);
+        if (newIndex >= 0 && newIndex < state.photos.length) {
+            selectPhoto(newIndex);
         }
     }
 
@@ -726,13 +750,16 @@
                     navigatePrev();
                     break;
                 case 'ArrowRight':
-                case 'ArrowDown':
                     e.preventDefault();
                     navigateNext();
                     break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    navigateByRow(1);  // 한 행 아래
+                    break;
                 case 'ArrowUp':
                     e.preventDefault();
-                    navigatePrev();
+                    navigateByRow(-1);  // 한 행 위
                     break;
                 case ' ':
                     e.preventDefault();
