@@ -121,33 +121,62 @@
         // manifest 파일 ID가 있으면 여러 방법 시도
         const manifestId = params.get('manifest');
         if (manifestId) {
-            // Google Apps Script 프록시 (CORS 우회)
-            const proxyUrl = `https://script.google.com/macros/s/AKfycbzBqFrLN3fWZ_RFpJmhCgVRnlzYxKhHKN5Uph9w8Pg/dev?id=${manifestId}`;
-            const directUrls = [
+            // JSONP 방식: Google Drive 파일을 script 태그로 로드
+            // manifest를 JSONP callback으로 감싸서 업로드하면 CORS 우회 가능
+
+            // 방법 1: fetch 시도 (일부 브라우저/설정에서 작동)
+            const urls = [
                 `https://www.googleapis.com/drive/v3/files/${manifestId}?alt=media`,
                 `https://drive.google.com/uc?id=${manifestId}&export=download`,
-                proxyUrl,
             ];
-            for (const url of directUrls) {
+            for (const url of urls) {
                 try {
-                    const resp = await fetch(url, { redirect: 'follow' });
+                    const resp = await fetch(url, { redirect: 'follow', mode: 'cors' });
                     if (resp.ok) {
                         const text = await resp.text();
-                        // HTML 응답인지 체크 (Google 로그인 페이지)
-                        if (text.startsWith('{') || text.startsWith('[')) {
-                            const manifest = JSON.parse(text);
-                            loadFromManifest(manifest);
+                        if (text.trimStart().startsWith('{')) {
+                            loadFromManifest(JSON.parse(text));
                             return;
                         }
                     }
-                } catch (e) {
-                    console.log(`Manifest load failed (${url.substring(0, 50)}...):`, e.message);
-                    continue;
-                }
+                } catch (e) { continue; }
             }
 
-            // 최후 수단: iframe으로 다운로드 후 수동 로드 안내
-            showToast('매니페스트 로딩 중... 잠시 기다려주세요');
+            // 방법 2: no-cors + opaque response → 안 됨
+            // 방법 3: 사용자에게 manifest 파일 직접 로드 안내
+            hideLoading();
+            dom.emptyState.classList.remove('hidden');
+            dom.emptyState.innerHTML = `
+                <div style="text-align:center; padding: 20px;">
+                    <h2 style="color: var(--accent-blue);">사진 로딩 중...</h2>
+                    <p style="color: var(--text-secondary); margin: 12px 0;">
+                        Google Drive 보안 정책으로 직접 로딩이 제한될 수 있습니다.
+                    </p>
+                    <p style="color: var(--text-secondary); font-size: 13px; margin: 8px 0;">
+                        아래 버튼을 눌러 manifest 파일을 다운로드한 후,<br>
+                        "매니페스트 파일 열기"로 로드해주세요.
+                    </p>
+                    <div style="margin: 16px 0; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+                        <a href="https://drive.google.com/uc?id=${manifestId}&export=download"
+                           download="manifest.json"
+                           style="padding: 10px 20px; background: var(--accent-blue); color: white; border-radius: 8px; text-decoration: none; font-weight: 600;">
+                            📥 manifest 다운로드
+                        </a>
+                        <label for="manifest-input"
+                               style="padding: 10px 20px; background: var(--bg-surface); color: var(--text-primary); border-radius: 8px; cursor: pointer; border: 1px solid var(--border-color);">
+                            📂 매니페스트 파일 열기
+                        </label>
+                    </div>
+                    <p style="color: var(--text-muted); font-size: 11px;">
+                        또는 데모 모드로 체험해보세요
+                    </p>
+                    <button onclick="location.href=location.pathname"
+                            style="padding: 8px 16px; background: var(--bg-hover); color: var(--text-secondary); border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer;">
+                        데모 모드
+                    </button>
+                </div>
+            `;
+            return;
         }
 
         // Google Drive API (API 키 필요)
