@@ -1286,29 +1286,8 @@
     const origUpdate = updateThumbnailStates;
 
     // ─── 모바일 스와이프 + 터치 ───
-    function initMobileTouch() {
-        const preview = document.getElementById('preview-container');
-        if (!preview) return;
-        let startX = 0, startY = 0, startTime = 0;
-
-        preview.addEventListener('touchstart', (e) => {
-            startX = e.touches[0].clientX;
-            startY = e.touches[0].clientY;
-            startTime = Date.now();
-        }, { passive: true });
-
-        preview.addEventListener('touchend', (e) => {
-            const dx = e.changedTouches[0].clientX - startX;
-            const dy = e.changedTouches[0].clientY - startY;
-            const dt = Date.now() - startTime;
-
-            if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) && dt < 300) {
-                // 스와이프: 좌 = 다음, 우 = 이전
-                if (dx < 0) navigateNext();
-                else navigatePrev();
-            }
-        }, { passive: true });
-    }
+    // initMobileTouch 제거 — onTouchStart/onTouchEnd에서 이미 처리
+    function initMobileTouch() { /* 중복 방지: 기존 터치 핸들러 사용 */ }
 
     // ─── Boot ───
     document.addEventListener('DOMContentLoaded', () => {
