@@ -480,11 +480,18 @@
         for (let offset = 1; offset <= range; offset++) {
             [centerIndex + offset, centerIndex - offset].forEach(i => {
                 if (i >= 0 && i < state.photos.length) {
-                    const url = state.photos[i].fullUrl;
-                    if (url && !prefetchCache.has(url)) {
-                        prefetchCache.add(url);
+                    const photo = state.photos[i];
+                    // 풀이미지 프리페치
+                    if (photo.fullUrl && !prefetchCache.has(photo.fullUrl)) {
+                        prefetchCache.add(photo.fullUrl);
                         const img = new Image();
-                        img.src = url;  // 브라우저 캐시에 저장
+                        img.src = photo.fullUrl;
+                    }
+                    // 썸네일도 프리페치 (모바일 네트워크 대비)
+                    if (photo.thumbUrl && !prefetchCache.has(photo.thumbUrl)) {
+                        prefetchCache.add(photo.thumbUrl);
+                        const img2 = new Image();
+                        img2.src = photo.thumbUrl;
                     }
                 }
             });
