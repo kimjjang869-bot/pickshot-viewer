@@ -121,20 +121,33 @@
         // manifest 파일 ID가 있으면 여러 방법 시도
         const manifestId = params.get('manifest');
         if (manifestId) {
-            const urls = [
+            // Google Apps Script 프록시 (CORS 우회)
+            const proxyUrl = `https://script.google.com/macros/s/AKfycbzBqFrLN3fWZ_RFpJmhCgVRnlzYxKhHKN5Uph9w8Pg/dev?id=${manifestId}`;
+            const directUrls = [
                 `https://www.googleapis.com/drive/v3/files/${manifestId}?alt=media`,
                 `https://drive.google.com/uc?id=${manifestId}&export=download`,
+                proxyUrl,
             ];
-            for (const url of urls) {
+            for (const url of directUrls) {
                 try {
-                    const resp = await fetch(url);
+                    const resp = await fetch(url, { redirect: 'follow' });
                     if (resp.ok) {
-                        const manifest = await resp.json();
-                        loadFromManifest(manifest);
-                        return;
+                        const text = await resp.text();
+                        // HTML 응답인지 체크 (Google 로그인 페이지)
+                        if (text.startsWith('{') || text.startsWith('[')) {
+                            const manifest = JSON.parse(text);
+                            loadFromManifest(manifest);
+                            return;
+                        }
                     }
-                } catch (e) { continue; }
+                } catch (e) {
+                    console.log(`Manifest load failed (${url.substring(0, 50)}...):`, e.message);
+                    continue;
+                }
             }
+
+            // 최후 수단: iframe으로 다운로드 후 수동 로드 안내
+            showToast('매니페스트 로딩 중... 잠시 기다려주세요');
         }
 
         // Google Drive API (API 키 필요)
@@ -679,11 +692,25 @@
         // SP Select
         dom.btnSp.addEventListener('click', () => { toggleSp(); saveState(); });
 
-        // Zoom
+        // 미리보기 클릭: 싱글클릭=확대, 더블클릭=SP 셀렉
         dom.btnZoom.addEventListener('click', toggleZoom);
+        let clickTimer = null;
         dom.previewContainer.addEventListener('click', (e) => {
             if (e.target === dom.previewImage || e.target === dom.previewContainer) {
-                if (!state.isDragging) toggleZoom();
+                if (state.isDragging) return;
+                if (clickTimer) {
+                    // 더블클릭 — SP 토글
+                    clearTimeout(clickTimer);
+                    clickTimer = null;
+                    toggleSp();
+                    saveState();
+                } else {
+                    // 싱글클릭 대기 (200ms)
+                    clickTimer = setTimeout(() => {
+                        clickTimer = null;
+                        toggleZoom();
+                    }, 250);
+                }
             }
         });
 
