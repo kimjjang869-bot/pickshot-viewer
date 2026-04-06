@@ -102,17 +102,27 @@
     async function loadFromGoogleDrive(folderId) {
         showLoading('Google Drive에서 사진 불러오는 중...');
 
-        // First try loading manifest.json from the folder
-        try {
-            const manifestUrl = `https://drive.google.com/uc?id=${folderId}&export=download`;
-            // Try to fetch manifest from folder — this works if folderId points to a manifest file
-            // Otherwise, use the Drive API
-        } catch (e) { /* continue to API */ }
+        // URL에 manifest 파일 ID가 있으면 직접 다운로드
+        const params = new URLSearchParams(window.location.search);
+        const manifestId = params.get('manifest');
+        if (manifestId) {
+            try {
+                const manifestUrl = `https://drive.google.com/uc?id=${manifestId}&export=download`;
+                const resp = await fetch(manifestUrl);
+                if (resp.ok) {
+                    const manifest = await resp.json();
+                    loadFromManifest(manifest);
+                    return;
+                }
+            } catch (e) {
+                console.log('Manifest 로드 실패, API 방식 시도:', e);
+            }
+        }
 
-        // Use Google Drive API (requires API key for public folders)
+        // Google Drive API (API 키 필요)
         const apiKey = GOOGLE_API_KEY;
         if (!apiKey) {
-            // No API key — try loading manifest.json relative path
+            // API 키 없이 manifest.json 직접 시도
             try {
                 const resp = await fetch('manifest.json');
                 if (resp.ok) {
@@ -124,7 +134,7 @@
 
             hideLoading();
             dom.emptyState.classList.remove('hidden');
-            showToast('Google Drive API 키가 설정되지 않았습니다. 매니페스트 파일을 사용하세요.');
+            showToast('매니페스트 파일을 로드할 수 없습니다. 링크를 확인해주세요.');
             return;
         }
 
@@ -166,16 +176,18 @@
 
     // ─── Manifest ───
     function loadFromManifest(manifest) {
-        // manifest format: { session, client, photos: [{name, thumbUrl, fullUrl}] }
+        if (manifest.sessionName) state.sessionName = manifest.sessionName;
         if (manifest.session) state.sessionName = manifest.session;
+        if (manifest.clientName) state.clientName = manifest.clientName;
         if (manifest.client) state.clientName = manifest.client;
 
         state.photos = (manifest.photos || []).map((p, i) => ({
-            id: p.id || `photo_${i}`,
-            name: p.name || `Photo ${i + 1}`,
-            thumbUrl: p.thumbUrl || p.fullUrl || p.url || '',
-            fullUrl: p.fullUrl || p.url || '',
-            selected: false,
+            id: p.driveFileId || p.id || `photo_${i}`,
+            name: p.filename || p.name || `Photo ${i + 1}`,
+            thumbUrl: p.thumbUrl || (p.driveFileId ? `https://drive.google.com/thumbnail?id=${p.driveFileId}&sz=w300` : ''),
+            fullUrl: p.fullUrl || (p.driveFileId ? `https://drive.google.com/thumbnail?id=${p.driveFileId}&sz=w1200` : ''),
+            originalFilename: p.originalFilename || '',
+            selected: p.selected || false,
             comment: '',
         }));
 
