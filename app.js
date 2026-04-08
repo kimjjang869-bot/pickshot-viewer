@@ -110,12 +110,22 @@
         // URL 해시에서 manifest 읽기
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
 
-        // mid= : GitHub Pages에 저장된 manifest (가장 안정적)
+        // mid= : GitHub Pages → raw.githubusercontent 폴백 (배포 지연 대응)
         const midParam = params.get('mid');
         if (midParam) {
+            // 1차: GitHub Pages (캐시된 경우 빠름)
             try {
-                const manifestUrl = `./data/${midParam}.json`;
-                const resp = await fetch(manifestUrl);
+                const resp = await fetch(`./data/${midParam}.json`);
+                if (resp.ok) {
+                    const manifest = await resp.json();
+                    loadFromManifest(manifest);
+                    return;
+                }
+            } catch (e) {}
+            // 2차: raw.githubusercontent.com (즉시 반영, 배포 지연 없음)
+            try {
+                const rawUrl = `https://raw.githubusercontent.com/kimjjang869-bot/pickshot-viewer/main/data/${midParam}.json`;
+                const resp = await fetch(rawUrl);
                 if (resp.ok) {
                     const manifest = await resp.json();
                     loadFromManifest(manifest);
