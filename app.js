@@ -893,13 +893,12 @@
         const jsonStr = JSON.stringify(result, null, 2);
         const filename = `${state.clientName || 'client'}_selection.pickshot`;
 
-        // .pickshot 파일은 클라이언트 "내 드라이브(root)" 에 업로드.
-        // 세션 폴더는 reader 권한이라 클라이언트가 쓸 수 없음 → 본인 드라이브에 저장 후
-        // 파일명에 세션 ID 포함 + 공유 링크 생성해 클립보드에 복사 → 포토그래퍼에게 전달.
+        // 세션 폴더가 writer 권한으로 공유돼 있으므로 해당 폴더에 직접 업로드.
+        const folderId = state.sessionId;
         const boundary = 'pickshot_boundary_' + Date.now();
-        const sessionIdShort = (state.sessionId || 'session').substring(0, 12);
-        const uniqueFilename = `pickshot_${sessionIdShort}_${filename}`;
-        const metadata = JSON.stringify({ name: uniqueFilename });
+        const metadata = folderId
+            ? JSON.stringify({ name: filename, parents: [folderId] })
+            : JSON.stringify({ name: filename });
 
         let body = '';
         body += `--${boundary}\r\n`;
