@@ -1274,3 +1274,118 @@ html, body {
 .thumbnail-grid {
     scroll-behavior: smooth !important;
 }
+
+/* ═══════════════════════════════════════════════
+   썸네일 그리드 — 세로/가로 1:1 강제 + 패딩 정돈
+═══════════════════════════════════════════════ */
+.thumbnail-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)) !important;
+    gap: 12px !important;
+    padding: 14px !important;
+    align-content: start !important;
+}
+.thumb-item {
+    position: relative !important;
+    width: 100% !important;
+    padding-bottom: 100% !important;  /* 1:1 정사각형 강제 */
+    height: 0 !important;
+    overflow: hidden !important;
+    border-radius: 10px !important;
+    cursor: pointer !important;
+    background: #1A1F35 !important;
+    border: 2px solid rgba(255, 255, 255, 0.06) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+    transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    aspect-ratio: auto !important;  /* padding-bottom 우선 */
+}
+.thumb-item img {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    display: block !important;
+    transition: transform 0.3s !important;
+}
+.thumb-item:hover {
+    transform: translateY(-3px) !important;
+    border-color: rgba(107, 141, 255, 0.45) !important;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5) !important;
+}
+.thumb-item.active {
+    border-color: var(--v2-accent, #6B8DFF) !important;
+    box-shadow: 0 0 0 3px rgba(107, 141, 255, 0.35), 0 10px 24px rgba(0, 0, 0, 0.6) !important;
+}
+
+/* 번호 배지 — 좌상단 고정, 배경 강화로 이미지 위에서도 보임 */
+.thumb-number {
+    position: absolute !important;
+    top: 6px !important;
+    left: 6px !important;
+    bottom: auto !important;
+    right: auto !important;
+    background: rgba(0, 0, 0, 0.82) !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+    color: #fff !important;
+    font-size: 10.5px !important;
+    font-weight: 800 !important;
+    padding: 3px 8px !important;
+    border-radius: 6px !important;
+    min-width: 22px !important;
+    text-align: center !important;
+    z-index: 5 !important;
+    font-variant-numeric: tabular-nums !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5) !important;
+    line-height: 1 !important;
+}
+
+/* 선택 체크 배지 — 우상단 (번호랑 안 겹치게) */
+.thumb-item.selected::after {
+    content: "✓" !important;
+    position: absolute !important;
+    top: 6px !important;
+    right: 6px !important;
+    width: 22px !important;
+    height: 22px !important;
+    background: #30D974 !important;
+    color: #fff !important;
+    border-radius: 50% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 13px !important;
+    font-weight: 900 !important;
+    z-index: 5 !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5) !important;
+}
+.thumb-item.selected::before {
+    content: "" !important;
+    position: absolute !important;
+    inset: 0 !important;
+    border: 3px solid #30D974 !important;
+    border-radius: 10px !important;
+    z-index: 2 !important;
+    pointer-events: none !important;
+    box-shadow: 0 0 18px rgba(48, 217, 116, 0.45) !important;
+}
+
+/* 모바일 — 3열 */
+@media (max-width: 720px) {
+    .thumbnail-grid {
+        grid-template-columns: repeat(3, 1fr) !important;
+        gap: 8px !important;
+        padding: 10px !important;
+    }
+    .thumb-number {
+        font-size: 9.5px !important;
+        padding: 2px 6px !important;
+        min-width: 18px !important;
+    }
+    .thumb-item.selected::after {
+        width: 18px !important;
+        height: 18px !important;
+        font-size: 11px !important;
+    }
+}
