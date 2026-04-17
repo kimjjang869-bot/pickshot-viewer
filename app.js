@@ -136,15 +136,14 @@
             }
         }
 
-        // gz= : zlib 압축 + Base64 (fallback)
+        // gz= : raw DEFLATE 압축 + Base64 (PickShot 앱이 생성, CORS 완전 우회)
         const gzParam = params.get('gz') || hashParams.get('gz');
         if (gzParam) {
-            try {
-                const binary = atob(gzParam);
+            const tryDecode = async (format) => {
+                const binary = atob(decodeURIComponent(gzParam));
                 const bytes = new Uint8Array(binary.length);
                 for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-                // zlib/deflate 해제 (pako 없이 DecompressionStream 사용)
-                const ds = new DecompressionStream('deflate');
+                const ds = new DecompressionStream(format);
                 const writer = ds.writable.getWriter();
                 writer.write(bytes);
                 writer.close();
@@ -156,11 +155,20 @@
                     chunks.push(value);
                 }
                 const decoded = new TextDecoder().decode(new Uint8Array(chunks.flatMap(c => [...c])));
-                const manifest = JSON.parse(decoded);
+                return JSON.parse(decoded);
+            };
+            try {
+                const manifest = await tryDecode('deflate-raw');
                 loadFromManifest(manifest);
                 return;
-            } catch (e) {
-                console.log('gz 파라미터 해제 실패:', e);
+            } catch (_) {
+                try {
+                    const manifest = await tryDecode('deflate');
+                    loadFromManifest(manifest);
+                    return;
+                } catch (e) {
+                    console.log('gz 파라미터 해제 실패:', e);
+                }
             }
         }
 
@@ -384,13 +392,24 @@
             img.className = 'loading';
             img.alt = photo.name;
             img.loading = 'lazy';
-            img.src = photo.thumbUrl;
+            img.decoding = 'async';
+            // 화면 근처 (+300px 버퍼) 진입 시에만 실제 로드 — IntersectionObserver 가 처리
+            img.dataset.src = photo.thumbUrl;
+            // 초기 20개까지는 즉시 로드 (스크롤 없이 보이는 것)
+            if (realIdx < 20) {
+                img.src = photo.thumbUrl;
+                delete img.dataset.src;
+            }
             img.onload = () => img.classList.remove('loading');
             img.onerror = () => {
                 img.src = 'data:image/svg+xml,' + encodeURIComponent(
                     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect fill="#333" width="100" height="100"/><text fill="#666" font-size="12" x="50" y="55" text-anchor="middle">No Image</text></svg>'
                 );
             };
+            // observer 가 이미 초기화돼 있으면 바로 등록
+            if (window.__pickshotObserveThumb) {
+                queueMicrotask(() => window.__pickshotObserveThumb(img));
+            }
 
             const num = document.createElement('span');
             num.className = 'thumb-number';
@@ -461,7 +480,7 @@
         dom.commentInput.value = photo.comment || '';
 
         // Update SP button state + 미리보기 보더
-        dom.btnSp.classList.toggle('active', photo.selected);
+        dom.btnSp?.classList.toggle('active', photo.selected);
         dom.previewImage.style.border = photo.selected ? '4px solid #30D158' : 'none';
         dom.previewImage.style.borderRadius = photo.selected ? '4px' : '0';
 
@@ -561,7 +580,7 @@
         if (!photo) return;
         photo.selected = !photo.selected;
 
-        dom.btnSp.classList.toggle('active', photo.selected);
+        dom.btnSp?.classList.toggle('active', photo.selected);
         // 미리보기 보더 업데이트
         if (index === state.currentIndex) {
             dom.previewImage.style.border = photo.selected ? '4px solid #30D158' : 'none';
@@ -576,7 +595,7 @@
         state.photos.forEach(p => p.selected = true);
         updateThumbnailStates();
         updateCounts();
-        dom.btnSp.classList.toggle('active', state.photos[state.currentIndex]?.selected);
+        dom.btnSp?.classList.toggle('active', state.photos[state.currentIndex]?.selected);
         saveState();
         showToast('전체 선택됨');
     }
@@ -585,7 +604,7 @@
         state.photos.forEach(p => p.selected = false);
         updateThumbnailStates();
         updateCounts();
-        dom.btnSp.classList.toggle('active', false);
+        dom.btnSp?.classList.toggle('active', false);
         saveState();
         showToast('선택 해제됨');
     }
@@ -914,7 +933,7 @@
             // Refresh current photo
             if (state.photos[state.currentIndex]) {
                 dom.commentInput.value = state.photos[state.currentIndex].comment || '';
-                dom.btnSp.classList.toggle('active', state.photos[state.currentIndex].selected);
+                dom.btnSp?.classList.toggle('active', state.photos[state.currentIndex].selected);
             }
         } catch (e) { /* ignore */ }
     }
@@ -978,7 +997,7 @@
         dom.btnNext.addEventListener('click', navigateNext);
 
         // SP Select
-        dom.btnSp.addEventListener('click', () => { toggleSp(); saveState(); });
+        dom.btnSp?.addEventListener('click', () => { toggleSp(); saveState(); });
 
         // 미리보기 클릭: 싱글클릭=확대, 더블클릭=SP 셀렉
         dom.btnZoom.addEventListener('click', toggleZoom);
@@ -1306,11 +1325,110 @@
     // initMobileTouch 제거 — onTouchStart/onTouchEnd에서 이미 처리
     function initMobileTouch() { /* 중복 방지: 기존 터치 핸들러 사용 */ }
 
+    // ───────────────────────────────────────────────
+    // 최초 방문 사용법 가이드 (PC/모바일 자동 분기)
+    // ───────────────────────────────────────────────
+    const HELP_KEY = 'pickshot_help_seen_v1';
+
+    function isMobile() {
+        return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || window.matchMedia('(max-width: 720px)').matches;
+    }
+
+    function showHelpModal() {
+        const modal = document.getElementById('help-modal');
+        if (!modal) return;
+        // PC/모바일 버전 분기
+        const pcBody = document.getElementById('help-pc');
+        const mobileBody = document.getElementById('help-mobile');
+        if (isMobile()) {
+            pcBody?.classList.add('hidden');
+            mobileBody?.classList.remove('hidden');
+        } else {
+            pcBody?.classList.remove('hidden');
+            mobileBody?.classList.add('hidden');
+        }
+        modal.classList.remove('hidden');
+    }
+
+    function hideHelpModal() {
+        document.getElementById('help-modal')?.classList.add('hidden');
+        const dontShow = document.getElementById('help-dont-show');
+        if (dontShow?.checked) {
+            localStorage.setItem(HELP_KEY, '1');
+        }
+    }
+
+    function initHelpModal() {
+        const closeBtn = document.getElementById('btn-help-close');
+        const backdrop = document.querySelector('.help-backdrop');
+        const floatBtn = document.getElementById('btn-help');
+
+        closeBtn?.addEventListener('click', hideHelpModal);
+        backdrop?.addEventListener('click', hideHelpModal);
+        floatBtn?.addEventListener('click', () => {
+            const cb = document.getElementById('help-dont-show');
+            if (cb) cb.checked = false;
+            showHelpModal();
+        });
+
+        // 최초 방문이면 자동 표시 (앱 로드 후 1초 딜레이)
+        const seen = localStorage.getItem(HELP_KEY);
+        if (!seen) {
+            setTimeout(() => {
+                // 앱이 실제 열려있을 때만 (로딩 중엔 안 띄움)
+                if (!document.getElementById('app').classList.contains('hidden')) {
+                    showHelpModal();
+                }
+            }, 800);
+        }
+    }
+
+    // ───────────────────────────────────────────────
+    // 썸네일 로딩 최적화 — IntersectionObserver 기반
+    // ───────────────────────────────────────────────
+    let thumbObserver = null;
+    function initThumbLazyLoad() {
+        if (!('IntersectionObserver' in window)) return;
+        if (thumbObserver) thumbObserver.disconnect();
+        thumbObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const img = entry.target;
+                    if (img.dataset.src && !img.src) {
+                        img.src = img.dataset.src;
+                        delete img.dataset.src;
+                    }
+                    thumbObserver.unobserve(img);
+                }
+            });
+        }, {
+            root: dom.thumbnailGrid,
+            rootMargin: '300px 0px',  // 위아래 300px 미리 로딩
+            threshold: 0.01
+        });
+
+        // 기존에 붙은 img 들 모두 관찰 시작 (초기 로드)
+        const imgs = dom.thumbnailGrid?.querySelectorAll('img[data-src]');
+        imgs?.forEach(img => thumbObserver.observe(img));
+    }
+
+    // 스크롤 시 이미 그려진 썸네일 observer 재적용
+    function observeThumbImg(img) {
+        if (thumbObserver && img.dataset.src) {
+            thumbObserver.observe(img);
+        }
+    }
+
+    // 공개 함수로 노출 (renderThumbnailGrid 에서 호출)
+    window.__pickshotObserveThumb = observeThumbImg;
+
     // ─── Boot ───
     document.addEventListener('DOMContentLoaded', () => {
         init();
         initGoogleAuth();
         setTimeout(initPenEvents, 500);
         setTimeout(initMobileTouch, 500);
+        setTimeout(initHelpModal, 300);
+        setTimeout(initThumbLazyLoad, 1200);  // 썸네일 그려진 후
     });
 })();

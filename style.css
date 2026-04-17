@@ -563,3 +563,184 @@ html, body {
     background: none; border: none; color: #FF3B30;
     cursor: pointer; font-size: 11px; padding: 2px 6px;
 }
+
+/* ═══════════════════════════════════════════════
+   사용법 가이드 모달 (Help Modal)
+═══════════════════════════════════════════════ */
+.help-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+.help-modal.hidden { display: none; }
+.help-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+.help-content {
+    position: relative;
+    background: linear-gradient(145deg, #1d2436 0%, #141826 100%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 32px;
+    max-width: 520px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+    animation: helpFadeIn 0.25s ease-out;
+}
+@keyframes helpFadeIn {
+    from { opacity: 0; transform: translateY(20px) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.help-header {
+    text-align: center;
+    margin-bottom: 28px;
+}
+.help-icon {
+    font-size: 44px;
+    margin-bottom: 10px;
+    filter: drop-shadow(0 4px 12px rgba(52, 105, 255, 0.4));
+}
+.help-title {
+    font-size: 22px;
+    font-weight: 800;
+    color: #fff;
+    margin: 0 0 6px 0;
+    letter-spacing: -0.01em;
+}
+.help-subtitle {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.6);
+    margin: 0;
+    line-height: 1.5;
+}
+.help-body { padding: 0; }
+.help-section {
+    margin-bottom: 22px;
+    padding: 14px 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+}
+.help-section:last-child { margin-bottom: 0; }
+.help-section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #3469ff;
+    margin: 0 0 10px 0;
+    letter-spacing: 0.02em;
+}
+.help-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.85);
+}
+.help-row + .help-row {
+    border-top: 1px dashed rgba(255, 255, 255, 0.05);
+}
+.help-kbd {
+    display: inline-block;
+    padding: 3px 8px;
+    min-width: 26px;
+    text-align: center;
+    font-family: 'SF Mono', 'Courier New', monospace;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #fff;
+    background: linear-gradient(180deg, #3a4154 0%, #282f40 100%);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 5px;
+    box-shadow: 0 2px 0 rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    margin-right: 2px;
+}
+.help-click, .help-gesture {
+    font-size: 12px;
+    font-weight: 600;
+    color: #30D158;
+    padding: 4px 10px;
+    background: rgba(48, 209, 88, 0.12);
+    border-radius: 6px;
+    white-space: nowrap;
+}
+.help-desc {
+    flex: 1;
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 13px;
+}
+.help-footer {
+    margin-top: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.help-dont-show {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.55);
+    cursor: pointer;
+    user-select: none;
+}
+.help-dont-show input { cursor: pointer; }
+.help-btn-close {
+    padding: 10px 24px;
+    font-size: 14px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #3469ff, #5B8DFF);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+.help-btn-close:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(52, 105, 255, 0.4);
+}
+
+/* 도움말 플로팅 버튼 */
+.btn-help-float {
+    position: fixed;
+    right: 18px;
+    bottom: 70px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(52, 105, 255, 0.15);
+    border: 1px solid rgba(52, 105, 255, 0.4);
+    color: #5B8DFF;
+    font-size: 16px;
+    font-weight: 800;
+    cursor: pointer;
+    z-index: 100;
+    transition: all 0.2s;
+    backdrop-filter: blur(10px);
+}
+.btn-help-float:hover {
+    background: rgba(52, 105, 255, 0.3);
+    transform: scale(1.08);
+}
+
+@media (max-width: 720px) {
+    .help-content { padding: 22px 18px; max-width: 95vw; }
+    .help-title { font-size: 19px; }
+    .help-section-title { font-size: 12px; }
+    .help-row { font-size: 12px; }
+    .btn-help-float { bottom: 90px; right: 14px; width: 34px; height: 34px; }
+}

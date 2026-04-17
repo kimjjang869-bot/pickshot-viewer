@@ -111,8 +111,6 @@
                 <button id="btn-next" class="btn btn-nav" title="다음">
                     <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M8 4l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </button>
-                <span class="nav-divider"></span>
-                <button id="btn-sp" class="btn btn-sp" title="SP 선택 (Space)">SP 선택</button>
             </div>
             <div class="bottom-center">
                 <button id="btn-zoom" class="btn btn-tool" title="확대/축소">
@@ -184,6 +182,134 @@
 
     <!-- Toast -->
     <div id="toast" class="toast hidden"></div>
+
+    <!-- 첫 방문 사용법 가이드 (PC/모바일 자동 분기) -->
+    <div id="help-modal" class="help-modal hidden">
+        <div class="help-backdrop"></div>
+        <div class="help-content">
+            <div class="help-header">
+                <div class="help-icon">✨</div>
+                <h2 class="help-title">환영합니다!</h2>
+                <p class="help-subtitle" id="help-subtitle">사진 셀렉을 시작하기 전에 간단한 사용법을 확인해주세요</p>
+            </div>
+
+            <!-- PC 버전 -->
+            <div class="help-body" id="help-pc">
+                <div class="help-section">
+                    <h3 class="help-section-title">📸 사진 선택</h3>
+                    <div class="help-row">
+                        <kbd class="help-kbd">Space</kbd>
+                        <span class="help-desc">현재 사진 선택 / 해제</span>
+                    </div>
+                    <div class="help-row">
+                        <span class="help-click">✓ 썸네일 클릭</span>
+                        <span class="help-desc">선택한 사진 보기</span>
+                    </div>
+                </div>
+
+                <div class="help-section">
+                    <h3 class="help-section-title">⬅️ 이동</h3>
+                    <div class="help-row">
+                        <kbd class="help-kbd">←</kbd><kbd class="help-kbd">→</kbd>
+                        <span class="help-desc">이전 / 다음 사진</span>
+                    </div>
+                    <div class="help-row">
+                        <kbd class="help-kbd">Home</kbd><kbd class="help-kbd">End</kbd>
+                        <span class="help-desc">처음 / 마지막 사진</span>
+                    </div>
+                </div>
+
+                <div class="help-section">
+                    <h3 class="help-section-title">🔍 미리보기</h3>
+                    <div class="help-row">
+                        <kbd class="help-kbd">Z</kbd>
+                        <span class="help-desc">확대 / 축소</span>
+                    </div>
+                    <div class="help-row">
+                        <kbd class="help-kbd">P</kbd>
+                        <span class="help-desc">펜 도구 (수정 요청 표시)</span>
+                    </div>
+                    <div class="help-row">
+                        <kbd class="help-kbd">F</kbd>
+                        <span class="help-desc">선택한 사진만 필터</span>
+                    </div>
+                </div>
+
+                <div class="help-section">
+                    <h3 class="help-section-title">💬 코멘트 · 완료</h3>
+                    <div class="help-row">
+                        <span class="help-click">📝 우측 하단 입력창</span>
+                        <span class="help-desc">사진별 코멘트 입력</span>
+                    </div>
+                    <div class="help-row">
+                        <kbd class="help-kbd">Enter</kbd>
+                        <span class="help-desc">셀렉 완료 (우측 하단 버튼)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 모바일 버전 -->
+            <div class="help-body help-mobile hidden" id="help-mobile">
+                <div class="help-section">
+                    <h3 class="help-section-title">📸 사진 선택</h3>
+                    <div class="help-row">
+                        <span class="help-gesture">👆👆 더블 탭</span>
+                        <span class="help-desc">사진 선택 / 해제</span>
+                    </div>
+                    <div class="help-row">
+                        <span class="help-gesture">👆 썸네일 탭</span>
+                        <span class="help-desc">미리 보기</span>
+                    </div>
+                </div>
+
+                <div class="help-section">
+                    <h3 class="help-section-title">👉 이동</h3>
+                    <div class="help-row">
+                        <span class="help-gesture">↔️ 스와이프</span>
+                        <span class="help-desc">이전 / 다음 사진</span>
+                    </div>
+                    <div class="help-row">
+                        <span class="help-gesture">🎯 하단 화살표</span>
+                        <span class="help-desc">한 장씩 이동</span>
+                    </div>
+                </div>
+
+                <div class="help-section">
+                    <h3 class="help-section-title">🔍 확대 · 펜</h3>
+                    <div class="help-row">
+                        <span class="help-gesture">🤏 핀치 줌</span>
+                        <span class="help-desc">확대 / 축소</span>
+                    </div>
+                    <div class="help-row">
+                        <span class="help-gesture">✏️ 펜 버튼</span>
+                        <span class="help-desc">수정 요청 그리기</span>
+                    </div>
+                </div>
+
+                <div class="help-section">
+                    <h3 class="help-section-title">💬 코멘트 · 완료</h3>
+                    <div class="help-row">
+                        <span class="help-gesture">📝 코멘트 창</span>
+                        <span class="help-desc">사진별 메모 입력</span>
+                    </div>
+                    <div class="help-row">
+                        <span class="help-gesture">✅ 셀렉 완료</span>
+                        <span class="help-desc">우측 하단 버튼</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="help-footer">
+                <label class="help-dont-show">
+                    <input type="checkbox" id="help-dont-show"> 다시 보지 않기
+                </label>
+                <button id="btn-help-close" class="btn btn-primary help-btn-close">시작하기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 도움말 재호출 버튼 (우측 하단 플로팅) -->
+    <button id="btn-help" class="btn-help-float" title="사용법 다시 보기">?</button>
 
     <script src="app.js"></script>
 </body>
