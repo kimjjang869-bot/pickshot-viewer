@@ -837,6 +837,17 @@
                 driveFileId: p.id,
                 selected: p.selected,
                 comment: p.comment || '',
+                // 펜 그림 — PickShot 앱이 인식하는 penDrawings 포맷으로 변환
+                penDrawings: (penPaths[state.photos.indexOf(p)] || []).map(path => ({
+                    color: path.color,
+                    strokeWidth: path.width || 3,
+                    paths: (path.points || []).map(pt => {
+                        // points 가 [x, y] 튜플이면 {x, y} 형태로 변환 (Swift 파서 기대값)
+                        if (Array.isArray(pt)) return { x: pt[0], y: pt[1] };
+                        return pt;
+                    }),
+                })),
+                // 레거시 호환 — annotations 이름으로도 유지
                 annotations: (penPaths[state.photos.indexOf(p)] || []).map(path => ({
                     type: 'freehand',
                     color: path.color,
