@@ -16,6 +16,7 @@
         sessionId: '',
         sessionName: '',
         clientName: '',
+        selectionLimit: 0,   // 고객 최대 선택 수 (0 = 무제한)
         photos: [],       // [{id, name, thumbUrl, fullUrl, selected, comment}]
         currentIndex: 0,
         zoomed: false,
@@ -317,6 +318,8 @@
         if (manifest.session) state.sessionName = manifest.session;
         if (manifest.clientName) state.clientName = manifest.clientName;
         if (manifest.client) state.clientName = manifest.client;
+        // 고객 최대 선택 수 (0 또는 없음 = 무제한)
+        state.selectionLimit = typeof manifest.selectionLimit === 'number' ? manifest.selectionLimit : 0;
 
         state.photos = (manifest.photos || []).map((p, i) => ({
             id: p.driveFileId || p.id || `photo_${i}`,
@@ -578,6 +581,19 @@
         if (index === undefined) index = state.currentIndex;
         const photo = state.photos[index];
         if (!photo) return;
+        // 하드 캡 체크 — 선택 추가 시에만 (해제는 항상 허용)
+        if (!photo.selected) {
+            const limit = state.selectionLimit || 0;
+            if (limit > 0) {
+                const currentSelected = state.photos.filter(p => p.selected).length;
+                if (currentSelected >= limit) {
+                    // 블록 + shake + toast
+                    triggerSelectionLimitShake(index);
+                    showToast(`최대 ${limit}장까지만 선택 가능합니다. 기존 선택을 해제하고 다시 선택해주세요.`, 4000);
+                    return;
+                }
+            }
+        }
         photo.selected = !photo.selected;
 
         dom.btnSp?.classList.toggle('active', photo.selected);
@@ -591,7 +607,29 @@
         saveState();
     }
 
+    // 리미트 도달 시 썸네일 shake + 상단 카운터 플래시
+    function triggerSelectionLimitShake(index) {
+        const thumb = dom.thumbnailGrid?.querySelector(`[data-index="${index}"]`);
+        if (thumb) {
+            thumb.classList.remove('shake-error');
+            void thumb.offsetWidth;  // 리플로우 강제 → 애니메이션 재실행
+            thumb.classList.add('shake-error');
+            setTimeout(() => thumb.classList.remove('shake-error'), 400);
+        }
+        if (dom.selectionCount) {
+            dom.selectionCount.classList.remove('flash-error');
+            void dom.selectionCount.offsetWidth;
+            dom.selectionCount.classList.add('flash-error');
+            setTimeout(() => dom.selectionCount.classList.remove('flash-error'), 800);
+        }
+    }
+
     function selectAll() {
+        const limit = state.selectionLimit || 0;
+        if (limit > 0 && state.photos.length > limit) {
+            showToast(`최대 ${limit}장까지만 선택 가능합니다.`, 4000);
+            return;
+        }
         state.photos.forEach(p => p.selected = true);
         updateThumbnailStates();
         updateCounts();
@@ -641,7 +679,24 @@
     function updateCounts() {
         const selected = state.photos.filter(p => p.selected).length;
         const total = state.photos.length;
-        dom.selectionCount.textContent = `선택: ${selected} / 전체: ${total}`;
+        const limit = state.selectionLimit || 0;
+
+        if (limit > 0) {
+            // 리미트 있음: "선택: 5 / 30 · 25장 남음"
+            const remaining = Math.max(0, limit - selected);
+            const pct = selected / limit;
+            dom.selectionCount.textContent = `선택: ${selected} / ${limit}  ·  ${remaining}장 남음`;
+            // 색상 단계
+            dom.selectionCount.classList.remove('count-green', 'count-yellow', 'count-red', 'count-full');
+            if (pct >= 1.0) dom.selectionCount.classList.add('count-full');
+            else if (pct >= 0.8) dom.selectionCount.classList.add('count-red');
+            else if (pct >= 0.5) dom.selectionCount.classList.add('count-yellow');
+            else dom.selectionCount.classList.add('count-green');
+        } else {
+            // 무제한
+            dom.selectionCount.textContent = `선택: ${selected} / 전체: ${total}`;
+            dom.selectionCount.classList.remove('count-green', 'count-yellow', 'count-red', 'count-full');
+        }
     }
 
     // ─── Submit ───

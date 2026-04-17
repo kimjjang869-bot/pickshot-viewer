@@ -744,3 +744,49 @@ html, body {
     .help-row { font-size: 12px; }
     .btn-help-float { bottom: 90px; right: 14px; width: 34px; height: 34px; }
 }
+
+/* ═══════════════════════════════════════════════
+   선택 리미트 — 색상 단계 + shake 애니메이션
+═══════════════════════════════════════════════ */
+.header-count {
+    transition: color 0.25s, background 0.25s;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+}
+.header-count.count-green {
+    color: #34C759;
+    background: rgba(52, 199, 89, 0.12);
+}
+.header-count.count-yellow {
+    color: #FFCC00;
+    background: rgba(255, 204, 0, 0.15);
+}
+.header-count.count-red {
+    color: #FF9F0A;
+    background: rgba(255, 159, 10, 0.18);
+}
+.header-count.count-full {
+    color: #FF3B30;
+    background: rgba(255, 59, 48, 0.22);
+    font-weight: 800;
+}
+.header-count.flash-error {
+    animation: flashError 0.8s ease;
+}
+@keyframes flashError {
+    0%, 100% { background: rgba(255, 59, 48, 0.22); }
+    50% { background: rgba(255, 59, 48, 0.55); transform: scale(1.06); }
+}
+
+/* 썸네일 shake — 리미트 도달 시 선택 시도할 때 */
+.thumb-item.shake-error {
+    animation: shakeError 0.4s cubic-bezier(.36,.07,.19,.97);
+}
+@keyframes shakeError {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-6px); }
+    40% { transform: translateX(6px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+}
