@@ -137,8 +137,9 @@
             }
         }
 
-        // gz= : raw DEFLATE 압축 + Base64 (PickShot 앱이 생성, CORS 완전 우회)
-        const gzParam = params.get('gz') || hashParams.get('gz');
+        // gz= / g= : raw DEFLATE 압축 + Base64 (PickShot 앱이 생성, CORS 완전 우회)
+        // g= 는 축약 포맷 (v:1), gz= 는 레거시 풀 포맷
+        const gzParam = params.get('gz') || hashParams.get('gz') || params.get('g') || hashParams.get('g');
         if (gzParam) {
             const tryDecode = async (format) => {
                 const binary = atob(decodeURIComponent(gzParam));
@@ -314,22 +315,43 @@
                 });
             }
         }
+        // 일반 포맷 필드
         if (manifest.sessionName) state.sessionName = manifest.sessionName;
         if (manifest.session) state.sessionName = manifest.session;
         if (manifest.clientName) state.clientName = manifest.clientName;
         if (manifest.client) state.clientName = manifest.client;
-        // 고객 최대 선택 수 (0 또는 없음 = 무제한)
         state.selectionLimit = typeof manifest.selectionLimit === 'number' ? manifest.selectionLimit : 0;
 
-        state.photos = (manifest.photos || []).map((p, i) => ({
-            id: p.driveFileId || p.id || `photo_${i}`,
-            name: p.filename || p.name || `Photo ${i + 1}`,
-            thumbUrl: p.thumbUrl || (p.driveFileId ? `https://drive.google.com/thumbnail?id=${p.driveFileId}&sz=w200` : ''),
-            fullUrl: p.fullUrl || (p.driveFileId ? `https://drive.google.com/thumbnail?id=${p.driveFileId}&sz=w1200` : ''),
-            originalFilename: p.originalFilename || '',
-            selected: p.selected || false,
-            comment: '',
-        }));
+        // 축약 포맷 (v:1) — URL 해시 임베딩용
+        //   {v:1, s:세션, c:고객, l:리미트, z:zipID, p:[[driveId,filename[,origFilename]]]}
+        if (manifest.v === 1) {
+            state.sessionName = manifest.s || state.sessionName;
+            state.clientName = manifest.c || state.clientName;
+            state.selectionLimit = manifest.l || 0;
+            state.photos = (manifest.p || []).map((row, i) => {
+                const [fid, fn, ofn] = row;
+                return {
+                    id: fid || `photo_${i}`,
+                    name: fn || `Photo ${i + 1}`,
+                    originalFilename: ofn || fn || '',
+                    thumbUrl: fid ? `https://lh3.googleusercontent.com/d/${fid}=s200` : '',
+                    fullUrl: fid ? `https://lh3.googleusercontent.com/d/${fid}=s1200` : '',
+                    selected: false,
+                    comment: '',
+                };
+            });
+        } else {
+            // 레거시 포맷
+            state.photos = (manifest.photos || []).map((p, i) => ({
+                id: p.driveFileId || p.id || `photo_${i}`,
+                name: p.filename || p.name || `Photo ${i + 1}`,
+                thumbUrl: p.thumbUrl || (p.driveFileId ? `https://lh3.googleusercontent.com/d/${p.driveFileId}=s200` : ''),
+                fullUrl: p.fullUrl || (p.driveFileId ? `https://lh3.googleusercontent.com/d/${p.driveFileId}=s1200` : ''),
+                originalFilename: p.originalFilename || '',
+                selected: p.selected || false,
+                comment: '',
+            }));
+        }
 
         startApp();
     }
