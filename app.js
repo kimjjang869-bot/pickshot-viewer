@@ -128,6 +128,27 @@
             }
         };
 
+        // proxy= : Google Apps Script 프록시 URL (CORS 우회용 최우선 경로)
+        const proxyParam = params.get('proxy');
+        const manifestParam = params.get('manifest') || params.get('m');
+        if (proxyParam && manifestParam) {
+            try {
+                const url = `${proxyParam}?id=${encodeURIComponent(manifestParam)}`;
+                const resp = await fetch(url);
+                if (resp.ok) {
+                    const manifest = await resp.json();
+                    if (!manifest.error) {
+                        loadFromManifest(manifest);
+                        return;
+                    } else {
+                        console.log('프록시 에러:', manifest.error);
+                    }
+                }
+            } catch (e) {
+                console.log('프록시 fetch 실패:', e);
+            }
+        }
+
         // mid= : GitHub Pages → raw.githubusercontent 폴백 (배포 지연 대응)
         const midParam = params.get('mid');
         if (midParam) {
