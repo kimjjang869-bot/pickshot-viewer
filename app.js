@@ -155,11 +155,20 @@
         }
 
         // gz= / g= : raw DEFLATE 압축 + Base64 (PickShot 앱이 생성, CORS 완전 우회)
-        // g= 는 축약 포맷 (v:1), gz= 는 레거시 풀 포맷
-        const gzParam = params.get('gz') || hashParams.get('gz') || params.get('g') || hashParams.get('g');
+        // g= 는 축약 포맷 (v:1) + URL-safe base64 (- _ , no padding), 쿼리(?)에 있어 URL 단축기 통과.
+        // gz= 는 레거시 풀 포맷 (해시 전용).
+        const gzParam = params.get('g') || hashParams.get('g') || params.get('gz') || hashParams.get('gz');
         if (gzParam) {
+            // URL-safe base64 복원: - → +, _ → /, padding 복구
+            const toStd = (s) => {
+                let x = s.replace(/-/g, '+').replace(/_/g, '/');
+                const pad = x.length % 4;
+                if (pad) x += '='.repeat(4 - pad);
+                return x;
+            };
             const tryDecode = async (format) => {
-                const binary = atob(decodeURIComponent(gzParam));
+                const raw = decodeURIComponent(gzParam);
+                const binary = atob(toStd(raw));
                 const bytes = new Uint8Array(binary.length);
                 for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
                 const ds = new DecompressionStream(format);
