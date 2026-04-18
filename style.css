@@ -228,6 +228,13 @@ html, body {
     text-shadow: 0 1px 2px rgba(0,0,0,0.8);
     z-index: 1;
 }
+.thumb-rating {
+    position: absolute; top: 2px; left: 4px;
+    font-size: 10px; color: #FFC107;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.9);
+    letter-spacing: -1px;
+    z-index: 1;
+}
 
 /* ─── Preview Area ─── */
 .preview-area {
@@ -271,11 +278,38 @@ html, body {
     flex-shrink: 0;
 }
 .photo-info {
-    display: flex; justify-content: space-between;
-    margin-bottom: 6px;
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 6px; gap: 12px;
 }
 .photo-filename { font-size: 12px; font-weight: 500; }
 .photo-index { font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+/* Rating Stars */
+.rating-stars {
+    display: inline-flex; gap: 2px;
+    user-select: none;
+    margin-left: auto;
+}
+.rating-stars .star {
+    font-size: 18px;
+    color: rgba(255, 255, 255, 0.25);
+    cursor: pointer;
+    transition: color 0.12s ease, transform 0.12s ease;
+    line-height: 1;
+    text-shadow: 0 0 1px rgba(0, 0, 0, 0.4);
+}
+.rating-stars .star:hover {
+    transform: scale(1.15);
+}
+.rating-stars .star.filled {
+    color: #FFC107;
+}
+.rating-stars .star.hovered {
+    color: #FFD54F;
+}
+@media (max-width: 600px) {
+    .rating-stars .star { font-size: 22px; padding: 2px; }
+}
 .comment-area { display: flex; gap: 8px; }
 .comment-input {
     flex: 1; padding: 8px 10px;

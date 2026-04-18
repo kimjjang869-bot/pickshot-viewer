@@ -17,7 +17,7 @@
         sessionName: '',
         clientName: '',
         selectionLimit: 0,   // 고객 최대 선택 수 (0 = 무제한)
-        photos: [],       // [{id, name, thumbUrl, fullUrl, selected, comment}]
+        photos: [],       // [{id, name, thumbUrl, fullUrl, selected, comment, rating}]
         currentIndex: 0,
         zoomed: false,
         filterSelected: false,
@@ -48,6 +48,7 @@
         dom.photoFilename = $('#photo-filename');
         dom.photoIndex = $('#photo-index');
         dom.commentInput = $('#comment-input');
+        dom.ratingStars = $('#rating-stars');
         dom.btnPrev = $('#btn-prev');
         dom.btnNext = $('#btn-next');
         dom.btnSp = $('#btn-sp');
@@ -339,6 +340,7 @@
                 fullUrl: `https://drive.google.com/uc?id=${f.id}`,
                 selected: false,
                 comment: '',
+                rating: 0,
             }));
 
             startApp();
@@ -385,6 +387,7 @@
                     fullUrl: fid ? `https://lh3.googleusercontent.com/d/${fid}=s1200` : '',
                     selected: false,
                     comment: '',
+                    rating: 0,
                 };
             });
         } else {
@@ -397,6 +400,7 @@
                 originalFilename: p.originalFilename || '',
                 selected: p.selected || false,
                 comment: '',
+                rating: p.rating || 0,
             }));
         }
 
@@ -420,6 +424,7 @@
                 fullUrl: `https://picsum.photos/seed/${seed}/1600/1200`,
                 selected: false,
                 comment: '',
+                rating: 0,
             });
         }
 
@@ -489,6 +494,15 @@
 
             item.appendChild(img);
             item.appendChild(num);
+
+            // 별점 배지 (1 이상일 때만)
+            if (photo.rating && photo.rating > 0) {
+                const ratingBadge = document.createElement('span');
+                ratingBadge.className = 'thumb-rating';
+                ratingBadge.textContent = '★'.repeat(photo.rating);
+                item.appendChild(ratingBadge);
+            }
+
             item.addEventListener('click', () => selectPhoto(realIdx));
 
             grid.appendChild(item);
@@ -550,6 +564,9 @@
         dom.photoFilename.textContent = photo.name;
         dom.photoIndex.textContent = `${index + 1} / ${state.photos.length}`;
         dom.commentInput.value = photo.comment || '';
+
+        // Rating 별 UI 갱신
+        updateRatingStars(photo.rating || 0);
 
         // Update SP button state + 미리보기 보더
         dom.btnSp?.classList.toggle('active', photo.selected);
@@ -716,6 +733,55 @@
         showToast('선택 해제됨');
     }
 
+    // ─── Rating ───
+    function setRating(value, index) {
+        if (index === undefined) index = state.currentIndex;
+        const photo = state.photos[index];
+        if (!photo) return;
+        // 같은 별 다시 누르면 해제
+        const newRating = (photo.rating === value) ? 0 : value;
+        photo.rating = Math.max(0, Math.min(5, newRating));
+        updateRatingStars(photo.rating);
+        updateThumbnailStates();
+        saveState();
+    }
+
+    function updateRatingStars(rating) {
+        if (!dom.ratingStars) return;
+        const stars = dom.ratingStars.querySelectorAll('.star');
+        stars.forEach(star => {
+            const r = parseInt(star.dataset.rating, 10);
+            star.classList.toggle('filled', r <= rating);
+            star.classList.remove('hovered');
+        });
+    }
+
+    function previewRatingStars(hoverValue) {
+        if (!dom.ratingStars) return;
+        const stars = dom.ratingStars.querySelectorAll('.star');
+        stars.forEach(star => {
+            const r = parseInt(star.dataset.rating, 10);
+            star.classList.toggle('hovered', r <= hoverValue);
+        });
+    }
+
+    function bindRatingEvents() {
+        if (!dom.ratingStars) return;
+        const stars = dom.ratingStars.querySelectorAll('.star');
+        stars.forEach(star => {
+            const value = parseInt(star.dataset.rating, 10);
+            star.addEventListener('click', (e) => {
+                e.stopPropagation();
+                setRating(value);
+            });
+            star.addEventListener('mouseenter', () => previewRatingStars(value));
+        });
+        dom.ratingStars.addEventListener('mouseleave', () => {
+            const photo = state.photos[state.currentIndex];
+            updateRatingStars(photo ? photo.rating || 0 : 0);
+        });
+    }
+
     // ─── Comments ───
     function saveCurrentComment() {
         const photo = state.photos[state.currentIndex];
@@ -837,6 +903,7 @@
                 driveFileId: p.id,
                 selected: p.selected,
                 comment: p.comment || '',
+                rating: p.rating || 0,
                 // 펜 그림 — PickShot 앱이 인식하는 penDrawings 포맷으로 변환
                 penDrawings: (penPaths[state.photos.indexOf(p)] || []).map(path => ({
                     color: path.color,
@@ -1010,6 +1077,7 @@
                 originalFilename: p.originalFilename || p.name,
                 selected: p.selected,
                 comment: p.comment || '',
+                rating: p.rating || 0,
             })),
         };
 
@@ -1046,10 +1114,12 @@
             const data = {
                 selections: {},
                 comments: {},
+                ratings: {},
             };
             state.photos.forEach(p => {
                 if (p.selected) data.selections[p.id] = true;
                 if (p.comment) data.comments[p.id] = p.comment;
+                if (p.rating && p.rating > 0) data.ratings[p.id] = p.rating;
             });
             localStorage.setItem(getStorageKey(), JSON.stringify(data));
         } catch (e) { /* quota exceeded, ignore */ }
@@ -1063,6 +1133,7 @@
             state.photos.forEach(p => {
                 if (data.selections && data.selections[p.id]) p.selected = true;
                 if (data.comments && data.comments[p.id]) p.comment = data.comments[p.id];
+                if (data.ratings && data.ratings[p.id]) p.rating = data.ratings[p.id];
             });
             updateThumbnailStates();
             updateCounts();
@@ -1070,6 +1141,7 @@
             if (state.photos[state.currentIndex]) {
                 dom.commentInput.value = state.photos[state.currentIndex].comment || '';
                 dom.btnSp?.classList.toggle('active', state.photos[state.currentIndex].selected);
+                updateRatingStars(state.photos[state.currentIndex].rating || 0);
             }
         } catch (e) { /* ignore */ }
     }
@@ -1192,6 +1264,9 @@
             showToast('펜 도구는 다음 업데이트에서 지원됩니다.');
         });
 
+        // 별점 이벤트
+        bindRatingEvents();
+
         // Empty state
         dom.btnLoadDemo.addEventListener('click', () => {
             dom.emptyState.classList.add('hidden');
@@ -1262,6 +1337,15 @@
                 case 'z':
                 case 'Z':
                     toggleZoom();
+                    break;
+                case '0':
+                case '1':
+                case '2':
+                case '3':
+                case '4':
+                case '5':
+                    e.preventDefault();
+                    setRating(parseInt(e.key, 10));
                     break;
             }
         });
