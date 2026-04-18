@@ -573,6 +573,9 @@
         dom.previewImage.style.border = photo.selected ? '4px solid #30D158' : 'none';
         dom.previewImage.style.borderRadius = photo.selected ? '4px' : '0';
 
+        // 셀렉한 사진만 코멘트/펜 허용
+        updateFeedbackAvailability(photo);
+
         // Reset zoom
         if (state.zoomed) toggleZoom();
 
@@ -687,6 +690,8 @@
         if (index === state.currentIndex) {
             dom.previewImage.style.border = photo.selected ? '4px solid #30D158' : 'none';
             dom.previewImage.style.borderRadius = photo.selected ? '4px' : '0';
+            // 현재 사진 셀렉 상태 변경됐으면 코멘트/펜 가용성 재설정
+            updateFeedbackAvailability?.(photo);
         }
         updateThumbnailStates();
         updateCounts();
@@ -731,6 +736,34 @@
         dom.btnSp?.classList.toggle('active', false);
         saveState();
         showToast('선택 해제됨');
+    }
+
+    // ─── Feedback Availability (셀렉한 사진만 코멘트/펜 허용) ───
+
+    /// 현재 사진의 셀렉 상태에 따라 코멘트 입력창 / 펜 툴 활성화 여부 결정.
+    /// 셀렉되지 않은 사진에는 수정 요청 코멘트/펜 마크 남길 수 없음.
+    function updateFeedbackAvailability(photo) {
+        const allowed = !!photo.selected;
+        // 코멘트 입력창
+        if (dom.commentInput) {
+            dom.commentInput.disabled = !allowed;
+            dom.commentInput.placeholder = allowed
+                ? '수정 요청이나 코멘트를 입력하세요...'
+                : '⚠️ 셀렉한 사진에만 코멘트를 남길 수 있습니다';
+            dom.commentInput.classList.toggle('disabled', !allowed);
+        }
+        // 펜 버튼
+        if (dom.btnPen) {
+            dom.btnPen.disabled = !allowed;
+            dom.btnPen.classList.toggle('disabled', !allowed);
+            dom.btnPen.title = allowed
+                ? '펜 도구 (P)'
+                : '셀렉한 사진에만 펜 사용 가능';
+            // 펜이 활성 중이면 자동 해제
+            if (!allowed && typeof penActive !== 'undefined' && penActive) {
+                togglePen?.();
+            }
+        }
     }
 
     // ─── Rating ───
@@ -846,8 +879,19 @@
         dom.submitCount.textContent = `${selected.length}장`;
         dom.submitComments.textContent = `${withComments.length}장`;
 
-        // Render selected list
+        // Render selected list — 섹션 헤더 + 목록 구분
         dom.selectedList.innerHTML = '';
+
+        if (selected.length > 0) {
+            const header = document.createElement('div');
+            header.className = 'selected-list-header';
+            header.innerHTML = `
+                <span class="selected-list-title">📸 셀렉한 사진 목록</span>
+                <span class="selected-list-count">${selected.length}장</span>
+            `;
+            dom.selectedList.appendChild(header);
+        }
+
         selected.forEach(photo => {
             const item = document.createElement('div');
             item.className = 'selected-item';
@@ -1368,6 +1412,12 @@
     let currentPenPath = [];
 
     function togglePen() {
+        // 셀렉한 사진만 펜 사용 가능
+        const currentPhoto = state.photos[state.currentIndex];
+        if (!penActive && (!currentPhoto || !currentPhoto.selected)) {
+            showToast('셀렉한 사진에만 펜을 사용할 수 있습니다', 3000);
+            return;
+        }
         penActive = !penActive;
         const canvas = document.getElementById('pen-canvas');
         const toolbar = document.getElementById('pen-toolbar');

@@ -1423,3 +1423,49 @@ html, body {
         font-size: 11px !important;
     }
 }
+
+/* ==================== v8.6 셀렉 완료 다이얼로그 헤더 ==================== */
+
+.selected-list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    margin: 8px 0 4px;
+    background: linear-gradient(135deg, rgba(255, 193, 7, 0.12), rgba(255, 193, 7, 0.04));
+    border: 1px solid rgba(255, 193, 7, 0.3);
+    border-radius: 8px;
+}
+.selected-list-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #FFC107;
+    letter-spacing: 0.3px;
+}
+.selected-list-count {
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255, 193, 7, 0.85);
+    background: rgba(255, 193, 7, 0.15);
+    padding: 3px 8px;
+    border-radius: 99px;
+}
+
+/* 코멘트/펜 비활성 상태 */
+.comment-input.disabled,
+.comment-input:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    background: rgba(0, 0, 0, 0.3);
+}
+.comment-input:disabled::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+    font-style: italic;
+}
+
+#btn-pen.disabled,
+#btn-pen:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+}
